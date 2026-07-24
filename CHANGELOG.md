@@ -4,6 +4,15 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.4.0
+
+### Added
+- **`setup.sh --enable-autoupdate`, and a setup step that offers it.** Third-party marketplaces have auto-update **off by default**, so a user who never runs `/plugin marketplace update` keeps running the commit they first installed — and reinstalling does not help, since it reinstalls from that same stale local clone. This is the single most common reason a shipped fix appears not to work; one machine was found pinned 8 commits back, silently. Setup now explains it and offers to switch it on (writes `autoUpdate: true` for this marketplace into `~/.claude/settings.json`, backing the file up first). `--enable-autoupdate --check` reports the state without changing anything. Manual equivalent: `/plugin` → Marketplaces → Enable auto-update.
+
+### Notes
+- With auto-update on, Claude Code refreshes marketplaces in the background shortly after a session starts, then prompts for `/reload-plugins`.
+- The `version` field drives update detection: pushing commits **without** bumping it is a no-op for existing users. Every release here bumps both manifests, and `--check` reports the version of the code actually installed.
+
 ## 0.3.2
 
 ### Docs

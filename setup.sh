@@ -65,6 +65,10 @@ case "${1:-}" in
   --login-o365) login_one o365_login.py ;;
   --login-zoom) login_one zoom_web_login.py ;;
   --whoami) exec "$PY" "$HERE/scripts/whoami.py" ;;
+  # Uses only the standard library, so it works before the venv exists.
+  --enable-autoupdate)
+    shift
+    exec "$([ -x "$PY" ] && echo "$PY" || echo python3)" "$HERE/scripts/enable_autoupdate.py" "$@" ;;
   --check) exec "$PY" "$HERE/scripts/selftest.py" ;;
   # Run any collector with the right venv + .env already loaded, so callers (the skills)
   # never need MT_STATE_DIR or the venv path themselves:
@@ -90,5 +94,5 @@ case "${1:-}" in
     echo "  2) ./setup.sh --login   # one-time browser sign-in (a window opens)"
     echo "  3) ./setup.sh --check   # verify everything is ready"
     ;;
-  *) echo "Usage: ./setup.sh [--login|--login-o365|--login-zoom|--whoami|--check|--paths|--run <script.py> [args]]"; exit 2 ;;
+  *) echo "Usage: ./setup.sh [--login|--login-o365|--login-zoom|--whoami|--check|--paths|--enable-autoupdate|--run <script.py> [args]]"; exit 2 ;;
 esac

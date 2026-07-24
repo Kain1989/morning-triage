@@ -44,11 +44,27 @@ Or clone this repo and add it as a local marketplace with `/plugin marketplace a
 
 The two logins are independent and last for weeks; you only redo one when a run reports `NOT_SIGNED_IN` for it.
 
-### Updating — and which version am I actually running?
+### Staying up to date
+
+**Turn on auto-update once.** Third-party marketplaces have it **off by default**, which is the single most common reason a shipped fix appears not to work:
+
+```
+/plugin  →  Marketplaces  →  morning-triage-marketplace  →  Enable auto-update
+```
+
+or let setup do it for you (it backs up `~/.claude/settings.json` first):
+
+```bash
+./setup.sh --enable-autoupdate
+```
+
+With it on, Claude Code refreshes the marketplace in the background shortly after a session starts, then prompts you to run `/reload-plugins`. Check the current state any time with `./setup.sh --enable-autoupdate --check`.
+
+### Which version am I actually running?
 
 `./setup.sh --check` reports `plugin_version`, read straight out of the installed code. Trust that over any number a plugins UI shows you.
 
-**Reinstalling is not enough.** The marketplace lives on your machine as a **git clone**, and uninstall/install simply reinstalls out of that clone — so if the clone is stale you get the same old version back, no matter how many times you reinstall. Refresh the marketplace first:
+**Without auto-update, reinstalling is not enough.** The marketplace lives on your machine as a **git clone**, and uninstall/install simply reinstalls out of that clone — so if the clone is stale you get the same old version back, no matter how many times you reinstall. Refresh the marketplace first:
 
 ```
 /plugin marketplace update morning-triage-marketplace

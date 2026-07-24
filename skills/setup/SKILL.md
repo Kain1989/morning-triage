@@ -40,7 +40,19 @@ Write the tokens into `$ROOT/.env` as `MT_MY_NAME_TOKENS="tok1;tok2;tok3"`, then
 - `{"error": "NOT_SIGNED_IN"}` → STEP 2 didn't take; retry it, then retry this.
 - `{"error": "NAME_NOT_FOUND"}` → only now ask the user for their Teams display name, and write that.
 
-## STEP 5 — Verify and finish
+## STEP 5 — Offer to turn on auto-update (recommended)
+
+Third-party marketplaces have auto-update **off by default**, so a user who never runs `/plugin marketplace update` keeps running whatever commit they first installed — reinstalling does not help, because it reinstalls from that same stale local clone. This is the most common reason a shipped fix appears not to work.
+
+Tell the user this and ask whether to enable it. If they agree:
+
+```bash
+bash "$ROOT/setup.sh" --enable-autoupdate
+```
+
+It sets `autoUpdate: true` for this marketplace in `~/.claude/settings.json`, backing the file up first, and takes effect from their next session. Mention the manual equivalent too: `/plugin` → Marketplaces → select it → **Enable auto-update**. If they decline, tell them to run `/plugin marketplace update morning-triage-marketplace` whenever they want fixes.
+
+## STEP 6 — Verify and finish
 Run `bash "$ROOT/setup.sh" --check` and read the JSON.
 - `"ready": true` → tell the user setup is complete: they can run `/morning-triage` now, and optionally schedule it each weekday morning.
 - Not ready → explain the failing check and its fix: exit code `4`/`3` = dependencies (re-run STEP 1); code `2` = a login didn't take (re-run STEP 2 or STEP 3 for whichever of `o365_profile` / `zoom_profile` is missing).
