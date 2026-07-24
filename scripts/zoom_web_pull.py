@@ -98,23 +98,69 @@ def _first(d, *keys):
     return None
 
 
-# Chrome/toolbar text that shows up in a rendered doc page but is not part of the note.
-_NOTE_NOISE = ("skip to main content", "accessibility overview", "contact sales", "request a demo",
-               "regenerate", "accept all", "reject all", "copy link", "share", "export",
-               "plans & pricing", "download", "1.888.799.8854")
+# Doc-viewer chrome, matched as a WHOLE line so it can never eat real note content
+# (a substring match on "share" would delete any sentence containing "shared").
+_NOTE_CHROME_LINES = {
+    # viewer toolbar
+    "add to starred", "share", "copy doc link", "view docs activity center", "more options",
+    "manual notes", "transcript", "regenerate", "accept all", "reject all", "export", "download",
+    # editor placeholders on an empty note. Deliberately excludes common words like "workflow",
+    # "next" or "accept", which are perfectly ordinary lines inside a real meeting note.
+    "add icon", "page options", "generate summary", "auto generate summary", "close", "try",
+    "don't show again", "start typing or generate with ai anytime",
+    "workflow", "previous", "next", "reject", "accept",
+    # Zoom Docs first-run help panel. Matched as exact whole lines — this panel can render
+    # ALONGSIDE a real note, so it must be removed line by line; treating its presence as
+    # "the note is empty" threw away a real note's entire body.
+    "user guide", "check out these productivity-boosting features",
+    "create data tables", "use data tables to keep tasks organized.",
+    "share docs and work together", "customize permissions for collaborators.",
+    "discover comments", "give feedback and ask questions on the doc.",
+    "📚 tutorial", "using zoom docs", "using zoom docs during a meeting",
+    "adding tables to zoom docs", "adding media or files to zoom docs",
+    "modifying the layout of a doc", "adding, resolving, and deleting comments in a doc",
+    "managing zoom docs", "using zoom docs keyboard shortcuts",
+    "managing docs in the zoom docs dashboard",
+    "using zoom docs content generation and revision with ai companion",
+    "zoom docs user permission types", "how to access your zoom docs",
+    "how to search for zoom docs", "how to view comments on zoom docs",
+    "how to view recent activities in zoom docs", "how to access zoom docs you created",
+    "how to access zoom docs shared with you",
+    "how to view the list of your favorite zoom docs", "how to access deleted zoom docs",
+    "would you like to auto-generate notes summary when finished?",
+}
+# Long marketing/footer strings that only ever appear as page furniture.
+_NOTE_CHROME_SUBSTR = ("skip to main content", "accessibility overview", "contact sales",
+                       "request a demo", "plans & pricing", "1.888.799.8854")
 
 
-def _clean_note_text(txt):
-    out_lines = []
-    for line in (txt or "").splitlines():
-        s = line.strip()
+def _clean_note_text(txt, title=None):
+    """Strip the doc-viewer chrome from a rendered note.
+
+    The viewer prints the title twice — page header, then document header — with the author's
+    avatar initials (e.g. "Z(") wedged between them, so plain adjacent-dedup misses it. The
+    title is passed in and dropped wherever it appears, since the caller already writes it as
+    the file's heading. Headings are wrapped in zero-width characters, which are normalized.
+    Everything else is kept, outline included, because triage can use it.
+    """
+    t = (title or "").strip()
+    lines, prev = [], None
+    for raw in (txt or "").splitlines():
+        s = raw.replace("​", "").replace("﻿", "").strip()
         if len(s) < 2:
             continue
         low = s.lower()
-        if any(n in low for n in _NOTE_NOISE):
+        if low in _NOTE_CHROME_LINES or any(n in low for n in _NOTE_CHROME_SUBSTR):
             continue
-        out_lines.append(s)
-    return "\n".join(out_lines).strip()
+        if t and s == t:
+            continue
+        if len(s) <= 3 and not re.search(r"[\w一-鿿]{2,}", s):
+            continue  # avatar initials / stray glyphs such as "Z("
+        if s == prev:
+            continue
+        prev = s
+        lines.append(s)
+    return "\n".join(lines).strip()
 
 
 def signed_out(url):
@@ -310,84 +356,122 @@ def collect_summaries(ctx, scopes, limit, out, days):
 
 
 def collect_notes(ctx, days, out, limit):
-    """Collect Zoom "My Notes" — the AI-structured meeting notes.
+    """Collect Zoom Notes — the AI-structured meeting notes — from BOTH tabs.
 
-    The notes SPA fetches its own list as `POST <docs-host>/api/search/file` with
-    `{"fileFilters":["FILE_FILTER_MEETING_NOTES"], ...}`. We capture that response
-    **passively** rather than re-issuing the call: the request carries SPA-injected auth
-    headers we would otherwise have to reproduce, and the same response reveals the account's
-    docs host (e.g. `us01docs.zoom.us`), which differs per account — so nothing is hard-coded.
+    The two tabs use different endpoints AND different response shapes (both verified live):
+      My notes       POST <docs>/api/search/file   {"fileFilters":["FILE_FILTER_MEETING_NOTES"],…}
+                     -> {"items": [ …flat file objects… ]}
+      Shared with me GET  <docs>/api/file/shared?fileFilters[]=FILE_FILTER_MEETING_NOTES&…
+                     -> {"sharedFiles": [ {"id":…, "file": {"id","title","updatedInfo":{…}}} ]}
+    A note shared with you does NOT appear under My notes, so covering only the first endpoint
+    silently returns nothing.
 
-    Verified against a live account whose notes list is empty (`totalCount: 0`), so the host
-    discovery and the empty path are proven. The per-item parsing reads defensively — several
-    candidate field names, tolerant timestamps — because the item shape could not be observed.
+    Both are captured **passively** from the SPA's own requests rather than re-issued: they
+    carry SPA-injected auth headers, and the same responses reveal the account's docs host
+    (e.g. `us01docs.zoom.us`), which differs per account — so nothing is hard-coded. Bodies are
+    read from `<docs>/doc/<id>` as rendered text with the viewer chrome stripped.
     """
-    results = []
-    grabbed = {"items": [], "docs": None}
+    grabbed = {"my": [], "shared": [], "docs": None}
 
     def hook(r):
         try:
-            if "/api/search/file" not in r.url:
-                return
-            grabbed["docs"] = "https://" + r.url.split("/")[2]
-            items = (r.json() or {}).get("items") or []
-            if items:
-                grabbed["items"].extend(items)
+            u = r.url
+            if "/api/search/file" in u:            # My notes  (POST, {"items": [...]})
+                grabbed["docs"] = "https://" + u.split("/")[2]
+                grabbed["my"].extend((r.json() or {}).get("items") or [])
+            elif "/api/file/shared" in u:          # Shared    (GET,  {"sharedFiles": [...]})
+                grabbed["docs"] = "https://" + u.split("/")[2]
+                grabbed["shared"].extend((r.json() or {}).get("sharedFiles") or [])
         except Exception:
             pass
 
-    page = ctx.new_page()
-    page.on("response", hook)
-    failed = None
-    try:
-        page.goto(f"{BASE}/notes#/my_notes", wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(14000)
-    except Exception as e:
-        failed = f"notes list failed: {str(e)[:150]}"
-    finally:
+    # Each tab gets its own page, and we WAIT FOR ITS REQUEST rather than sleeping a fixed
+    # amount: a fixed wait then navigating to the next tab silently dropped the first tab's
+    # in-flight response, so "My notes" came back empty even when the account had notes.
+    errors = []
+    for frag, marker in (("#/my_notes", "/api/search/file"),
+                         ("#/my_notes/shared", "/api/file/shared")):
+        pg = ctx.new_page()
+        pg.on("response", hook)
         try:
-            page.close()
-        except Exception:
-            pass
-    if failed:
-        return [{"error": failed}]
+            with pg.expect_response(lambda r, m=marker: m in r.url, timeout=45000):
+                pg.goto(f"{BASE}/notes{frag}", wait_until="domcontentloaded", timeout=60000)
+            pg.wait_for_timeout(3000)  # let the hook finish reading the body
+        except Exception as e:
+            errors.append(f"{frag}: {str(e)[:110]}")
+        finally:
+            try:
+                pg.close()
+            except Exception:
+                pass
 
     docs = grabbed["docs"]
+    if not docs:
+        note = "; ".join(errors) if errors else "no notes request observed"
+        return [{"error": f"notes list not captured ({note})"}]
+
+    def norm(row, scope):
+        """Both endpoints wrap the record the same way — {"file": {...}} — even though one
+        returns it under "items" and the other under "sharedFiles". Reading the outer object's
+        keys yields nothing, which silently dropped every note from the My tab."""
+        f = row.get("file") or row
+        upd, crt = f.get("updatedInfo") or {}, f.get("createdInfo") or {}
+        return {"scope": scope,
+                "id": _first(f, "id", "fileId", "docId", "documentId"),
+                "title": str(_first(f, "title", "fileName", "name", "topic") or "note"),
+                "updated": (upd.get("time") or crt.get("time")
+                            or _first(f, "modifiedTime", "updateTime", "updatedAt") or ""),
+                "owner": ((upd.get("user") or {}).get("displayName")
+                          or (crt.get("user") or {}).get("displayName") or "")}
+
+    rows = ([norm(x, "my") for x in grabbed["my"]]
+            + [norm(x, "shared") for x in grabbed["shared"]])
+
     ndir = os.path.join(out, "notes")
     os.makedirs(ndir, exist_ok=True)
-
-    for it in grabbed["items"][:limit]:
-        nid = _first(it, "fileId", "id", "docId", "documentId", "fileGuid")
-        title = str(_first(it, "fileName", "title", "name", "topic") or "note")
-        when = _first(it, "modifiedTime", "updateTime", "modifyTime", "updatedAt", "createTime") or ""
-        if not _within_days_any(when, days):
-            continue  # newest-first
-        entry = {"id": nid, "title": title[:120], "updated": when}
-        if nid and docs:
-            d = None
+    results, seen = [], set()
+    for entry in rows:
+        if len(results) >= limit:
+            break
+        nid = entry.get("id")
+        if not nid or nid in seen:
+            continue
+        seen.add(nid)
+        if not _within_days_any(entry.get("updated"), days):
+            continue
+        entry["title"] = entry["title"].strip()[:120] or "note"
+        d = None
+        try:
+            d = ctx.new_page()
+            d.goto(f"{docs}/doc/{nid}", wait_until="domcontentloaded", timeout=45000)
+            d.wait_for_timeout(9000)
+            entry["text"] = _clean_note_text(d.inner_text("body"), entry["title"])
+            if not entry["text"]:
+                entry["empty"] = "note has no content yet"
+        except Exception as e:
+            entry["error"] = f"note body failed: {str(e)[:130]}"
+        finally:
             try:
-                d = ctx.new_page()
-                d.goto(f"{docs}/doc/{nid}", wait_until="domcontentloaded", timeout=45000)
-                d.wait_for_timeout(8000)
-                entry["text"] = _clean_note_text(d.inner_text("body"))
-            except Exception as e:
-                entry["error"] = f"note body failed: {str(e)[:130]}"
-            finally:
-                try:
-                    if d:
-                        d.close()
-                except Exception:
-                    pass
+                if d:
+                    d.close()
+            except Exception:
+                pass
         if entry.get("text"):
-            base = f"{slug(str(when)[:10]) or 'undated'}_{slug(title)}"
+            base = f"{slug(str(entry.get('updated'))[:10]) or 'undated'}_{slug(entry['title'])}"
             fn = os.path.join(ndir, f"{base}.note.md")
             try:
+                header = [f"# {entry['title']}", "", f"- Updated: {entry.get('updated')}",
+                          f"- Scope: {entry['scope']}"]
+                if entry.get("owner"):
+                    header.append(f"- Owner: {entry['owner']}")
                 with open(fn, "w") as f:
-                    f.write(f"# {title}\n\n- Updated: {when}\n\n{entry['text']}\n")
+                    f.write("\n".join(header) + "\n\n" + entry["text"] + "\n")
                 entry["file"] = fn
             except Exception as e:
                 entry["write_error"] = str(e)[:120]
         results.append(entry)
+    if errors:
+        results.append({"warning": "; ".join(errors)})
     return results
 
 

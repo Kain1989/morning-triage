@@ -4,6 +4,16 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.6.0
+
+### Added
+- **Zoom Notes now covers "Shared with me"**, not only your own. A note someone shares with you does not appear under My notes at all, and the two tabs use different endpoints: `POST <docs>/api/search/file` for My notes, `GET <docs>/api/file/shared?fileFilters[]=FILE_FILTER_MEETING_NOTES` for shared. Every note records its `scope` (`my`/`shared`) plus the `owner` when shared — often that note is the only record you have of a meeting you missed.
+
+### Fixed
+- **My Notes were never actually collected in 0.5.0.** Both endpoints wrap the record as `{"file": {...}}`, but the My-notes parser read the *outer* object's keys, so `id`/`title`/`updated` all came back empty and every note was silently skipped as unidentifiable. Both scopes now share one parser.
+- **The list was captured with a fixed sleep**, so navigating to the second tab discarded the first tab's in-flight response — My notes came back empty even when the account had them. Each tab now gets its own page and explicitly waits for its own request.
+- **Note bodies carried viewer chrome.** The title is rendered twice with the author's avatar initials wedged between (defeating adjacent-dedup), and an empty note fills the page with the Zoom Docs first-run help panel. Chrome is now stripped as exact whole lines: that panel can render *alongside* real content, so neither a substring filter (an earlier one for "zoom docs"/"tutorial" silently deleted 600+ characters from a note that discussed exactly those topics) nor treating its presence as "note is empty" (which threw away a real note's entire body) is safe. Verified against a real note: every section survives, zero help-panel text remains, and a genuinely empty note is reported as `empty` instead of emitting a screenful of product tutorial.
+
 ## 0.5.0
 
 ### Added

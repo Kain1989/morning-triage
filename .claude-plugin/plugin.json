@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "morning-triage",
   "displayName": "Morning Triage",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Collect Teams, Outlook, and Zoom activity headlessly each morning, triage what actually needs your reply using closure rules, and produce a digest with paste-ready drafts \u2014 all from Claude Code, no GUI automation.",
   "author": {
     "name": "Kain1989",

@@ -64,7 +64,7 @@ Both write into the `inbox` directory reported by `--paths` (graceful: an error 
 Run `bash "$ROOT/setup.sh" --run zoom_web_pull.py --limit 5` (it writes to the `zoom_transcripts` path from `--paths` by default). It covers BOTH **My Recordings** and **Shared with me**, and pulls:
 - **Transcripts** — `<out>/<date>_<topic>.vtt` per recording (my + shared).
 - **AI Companion summaries** — `<out>/summaries/<date>_<topic>.summary.md` (overview + next steps + chapters) plus the raw `.summary.json`.
-- **My Notes** — `<out>/notes/<date>_<title>.note.md`: the AI-structured meeting notes (key outcomes, decisions made, open questions, action items). Skip with `--no-notes`.
+- **Notes** — `<out>/notes/<date>_<title>.note.md`: the AI-structured meeting notes (key outcomes, decisions, open questions, action items), from **both** "My notes" and "Shared with me". Each carries `scope` (`my`/`shared`) and, when shared, the `owner` — a note someone shared with you is often the only record you have of a meeting you missed. Skip with `--no-notes`.
 
 It writes `<out>/index.json` = `{recordings:[{source, topic, has_transcript, files}], summaries:[{scope, topic, overview, next_steps, chapters, file}], notes:[{id, title, updated, file, text}]}`, where `source`/`scope` is `my` | `shared`.
 
