@@ -25,18 +25,24 @@ Or clone this repo and add it as a local marketplace with `/plugin marketplace a
 
 ## Setup (one time)
 
-From the plugin directory:
+**Easiest — guided, inside Claude Code.** Just run:
+
+```
+/morning-triage:setup
+```
+
+It installs dependencies, asks you two questions (your name, and your Zoom URL), opens a browser to sign in to Microsoft 365 and then Zoom, and verifies everything. Follow the prompts — no shell steps, no editing files.
+
+**Or manually**, from the plugin directory:
 
 ```bash
 ./setup.sh            # create the Playwright venv + scaffold .env
-```
-Then edit `.env` — at minimum set `MT_MY_NAME_TOKENS` (fragments of your own name, for closure detection) and `MT_ZOOM_BASE` (your org Zoom portal). Then:
-```bash
+# edit .env: set MT_MY_NAME_TOKENS (fragments of your name) + MT_ZOOM_BASE (your org Zoom portal)
 ./setup.sh --login    # a browser window opens: complete M365 SSO, then Zoom SSO
 ./setup.sh --check    # preflight — should print "ready": true
 ```
 
-The two logins are independent and last for weeks. You only redo one when a run reports `NOT_SIGNED_IN` for it.
+The two logins are independent and last for weeks; you only redo one when a run reports `NOT_SIGNED_IN` for it.
 
 ## Run
 

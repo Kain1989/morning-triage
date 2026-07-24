@@ -50,8 +50,17 @@ do_login() {
   "$PY" "$HERE/scripts/zoom_web_login.py" || echo "  Zoom login not confirmed — re-run: ./setup.sh --login"
 }
 
+# Sign in to a single service. Used by the guided /morning-triage:setup skill so it can
+# open one browser window at a time. $1 = login script name under scripts/.
+login_one() {
+  [ -x "$PY" ] || { echo "No venv yet — run ./setup.sh first."; exit 1; }
+  "$PY" "$HERE/scripts/$1"
+}
+
 case "${1:-}" in
   --login) do_login ;;
+  --login-o365) login_one o365_login.py ;;
+  --login-zoom) login_one zoom_web_login.py ;;
   --check) exec "$PY" "$HERE/scripts/selftest.py" ;;
   "")
     install_deps
