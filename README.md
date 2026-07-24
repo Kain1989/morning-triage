@@ -44,9 +44,23 @@ Or clone this repo and add it as a local marketplace with `/plugin marketplace a
 
 The two logins are independent and last for weeks; you only redo one when a run reports `NOT_SIGNED_IN` for it.
 
-### Which version am I actually running?
+### Updating — and which version am I actually running?
 
-Run `./setup.sh --check` and read `plugin_version`. Your plugin host may keep showing the version it recorded at **install** time even after the code has been updated, so that field — read straight out of the installed code — is the one to trust. To pull the latest, update the marketplace (`/plugin marketplace update morning-triage-marketplace`) or hit **Update** in the plugins UI; if the number still looks stale afterwards, uninstall and reinstall.
+`./setup.sh --check` reports `plugin_version`, read straight out of the installed code. Trust that over any number a plugins UI shows you.
+
+**Reinstalling is not enough.** The marketplace lives on your machine as a **git clone**, and uninstall/install simply reinstalls out of that clone — so if the clone is stale you get the same old version back, no matter how many times you reinstall. Refresh the marketplace first:
+
+```
+/plugin marketplace update morning-triage-marketplace
+```
+
+then reinstall (or hit **Update**). The manual equivalent, if the UI won't cooperate:
+
+```bash
+git -C ~/.claude/plugins/marketplaces/morning-triage-marketplace pull
+```
+
+Then confirm with `./setup.sh --check` that `plugin_version` actually moved. A stale clone is silent — it looks like a working install of an old version, which is exactly how several fixes appeared "not to work".
 
 ## Run
 

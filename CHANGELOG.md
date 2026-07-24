@@ -4,6 +4,11 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.3.2
+
+### Docs
+- **Reinstalling the plugin does not pick up new versions.** The marketplace is cached locally as a git clone, and uninstall/install reinstalls out of that clone — so a clone that was never fetched keeps serving the same old version forever, silently. Seen in the field: a cache pinned 8 commits back (still reporting 0.1.0) meant none of the 0.2.x/0.3.x fixes were ever running, which made several of them look like they had failed. README now documents refreshing the marketplace first (`/plugin marketplace update`, or `git -C ~/.claude/plugins/marketplaces/<name> pull`) and verifying with `--check`.
+
 ## 0.3.1
 
 ### Added
