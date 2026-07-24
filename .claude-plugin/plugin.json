@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "morning-triage",
+  "displayName": "Morning Triage",
+  "version": "0.1.0",
+  "description": "Collect Teams, Outlook, and Zoom activity headlessly each morning, triage what actually needs your reply using closure rules, and produce a digest with paste-ready drafts — all from Claude Code, no GUI automation.",
+  "author": {
+    "name": "Kain1989",
+    "url": "https://github.com/Kain1989"
+  },
+  "homepage": "https://github.com/Kain1989/morning-triage",
+  "repository": "https://github.com/Kain1989/morning-triage",
+  "license": "MIT",
+  "keywords": [
+    "triage",
+    "standup",
+    "teams",
+    "outlook",
+    "zoom",
+    "digest",
+    "playwright",
+    "headless",
+    "productivity"
+  ],
+  "skills": "./skills/"
+}

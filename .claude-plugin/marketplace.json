@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "morning-triage-marketplace",
+  "owner": {
+    "name": "Kain1989",
+    "url": "https://github.com/Kain1989"
+  },
+  "description": "Morning Triage — a headless daily comms-triage plugin for Claude Code (Teams + Outlook + Zoom to a morning digest).",
+  "plugins": [
+    {
+      "name": "morning-triage",
+      "source": "./",
+      "description": "Collect Teams/Outlook/Zoom headlessly, triage what needs your reply with closure rules, and write a morning digest with paste-ready drafts.",
+      "version": "0.1.0"
+    }
+  ]
+}

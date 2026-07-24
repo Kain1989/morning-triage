@@ -1,0 +1,18 @@
+# This repo is CODE ONLY. Never commit collected messages or browser sessions.
+.env
+*.pyc
+__pycache__/
+
+# Runtime state lives under $MT_STATE_DIR (default ~/.morning-triage), outside the repo.
+# These patterns keep it out of git even if someone points MT_STATE_DIR inside the tree:
+o365_profile/
+zoom_profile/
+browser_profile/
+chat_watermark.json
+inbox/
+zoom_transcripts/
+venv/
+*.vtt
+
+# OS cruft
+.DS_Store
