@@ -43,14 +43,19 @@ MAX_CHATS = int(os.environ.get("TEAMS_MAX_CHATS", "200"))             # safety c
 MAX_SCROLL_ROUNDS = int(os.environ.get("TEAMS_MAX_SCROLL_ROUNDS", "60"))  # per-conversation scroll-up cap (safety vs a huge thread)
 PER_CHAT_BUDGET_S = float(os.environ.get("TEAMS_PER_CHAT_BUDGET_S", "120"))  # per-conversation wall-clock cap
 WATERMARK = os.path.expanduser(os.environ.get("TEAMS_CHAT_WATERMARK", os.path.join(STATE, "chat_watermark.json")))
-# First-run / new-conversation lookback start. ISO (UTC) overrides; else yesterday 12:00 local.
+# First-run / new-conversation lookback start. TEAMS_CHAT_SINCE (ISO or local wall-clock) wins;
+# otherwise look back MT_FIRST_RUN_DAYS days (default 3) so a fresh install picks up recent
+# context instead of only since yesterday. This applies ONLY the first time a conversation is
+# seen — once it has a watermark, the run resumes from that watermark instead.
 _SINCE_ENV = os.environ.get("TEAMS_CHAT_SINCE", "").strip()
+_FIRST_RUN_DAYS = float(os.environ.get("MT_FIRST_RUN_DAYS", "3"))
 # Rail rows that are pinned views / section labels, not real conversations.
 NON_CHAT_LABELS = {"quick views", "mentions", "chats", "", "saved", "meet now"}
 
 
 def _default_since_iso():
-    """Yesterday 12:00 local time, as an ISO-8601 UTC 'Z' string (comparable to time[datetime])."""
+    """First-look start as an ISO-8601 UTC 'Z' string (comparable to time[datetime]):
+    TEAMS_CHAT_SINCE when set, else MT_FIRST_RUN_DAYS days back."""
     if _SINCE_ENV:
         # Accept a full ISO or a 'YYYY-MM-DDTHH:MM' local wall-clock; normalize to UTC Z.
         try:
@@ -61,9 +66,8 @@ def _default_since_iso():
             return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         except Exception:
             pass
-    now = datetime.now().astimezone()
-    y = (now - timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
-    return y.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    start = datetime.now().astimezone() - timedelta(days=_FIRST_RUN_DAYS)
+    return start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 # Tokens that identify a message as sent BY YOU (used to mark last_sender_is_me / closure).
 # Set MT_MY_NAME_TOKENS to fragments of your own Teams display name, ';'-separated
 # (e.g. "jane doe;jdoe;jane"). If empty, no message is attributed to you and every open

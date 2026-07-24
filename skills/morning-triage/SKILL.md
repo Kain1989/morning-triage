@@ -19,6 +19,8 @@ All settings come from the environment (load `.env` at the plugin root if presen
 | `MT_WORKSPACE_DIR` | *(unset)* | Optional codebase to verify factual answers against before drafting. |
 | `MT_JIRA_ENABLED` / `MT_JIRA_PROJECT` / `MT_JIRA_ASSIGNEE_ACCOUNT_ID` | `0` | Optional: file Jira issues for new actionable work. |
 | `MT_SLACK_ENABLED` / `MT_SLACK_CHANNEL_ID` | `0` | Optional: post the digest summary to a Slack channel. |
+| `MT_FIRST_RUN_DAYS` | `3` | How far back to look the **first** time a Teams conversation is seen. Afterwards each conversation resumes from its own watermark (i.e. from where you last read). |
+| `MT_MARK_MAIL_READ` | `0` | Optional: after the digest is written, mark the triaged mail as read (writes to the mailbox). |
 
 ## Running commands
 
@@ -85,3 +87,15 @@ Then:
 - If `MT_JIRA_ENABLED=1` and an item is new actionable work not already tracked, you MAY create a Jira issue in `MT_JIRA_PROJECT` (assign `MT_JIRA_ASSIGNEE_ACCOUNT_ID`) — but only after confirming it is NOT closed by the rules above, and check existing issues first to avoid duplicates.
 - If `MT_SLACK_ENABLED=1`, post a short (<15 line) summary to channel `MT_SLACK_CHANNEL_ID` via the Slack MCP. This is the one pre-approved outbound write.
 - Finish with the digest as your final chat message so the user sees it.
+
+## STEP 5 — Optional: mark the triaged mail as read
+
+Teams conversations are already marked read as a side effect of opening them to read the thread. **Mail is not** — reading the inbox list never marks anything, so unread mail stays unread unless you do this step.
+
+Only when `MT_MARK_MAIL_READ=1` (it writes to the mailbox; off by default), and only **after** the digest is written:
+
+```bash
+bash "$ROOT/setup.sh" --run mark_mail_read.py --limit 50
+```
+
+Pass `--keep "<sender or subject fragment>"` (repeatable) for anything you listed as needs-reply, so those stay unread as a reminder. Add `--dry-run` first if you want to show the user what would be marked. Report how many were marked.

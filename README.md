@@ -66,6 +66,8 @@ All settings live in `.env` (see [`.env.example`](.env.example)):
 | `MT_LOG_DIR` | Where the digest markdown is written. |
 | `MT_DIGEST_LANG` | Language to write the digest in (default English). |
 | `MT_WORKSPACE_DIR` | Optional codebase to verify factual answers against before drafting. |
+| `MT_FIRST_RUN_DAYS` | How far back the **first** look goes for a Teams conversation (default 3 days). After that each conversation resumes from its own watermark — i.e. from where you last read. |
+| `MT_MARK_MAIL_READ` | `1` = mark triaged mail as read after the digest is written (writes to your mailbox; off by default). Teams conversations are already marked read by being opened. |
 | `MT_JIRA_*` / `MT_SLACK_*` | Optional integrations (off by default). |
 
 ## How it works
