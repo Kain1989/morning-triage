@@ -77,24 +77,6 @@ def on_idp(ctx):
     return False
 
 
-def session_works(ctx):
-    """Probe the mailbox in a throwaway tab, without disturbing the page the user is on."""
-    t = None
-    try:
-        t = ctx.new_page()
-        t.goto(URL, wait_until="domcontentloaded", timeout=25000)
-        t.wait_for_timeout(4000)
-        return signed_in_page(t)
-    except Exception:
-        return False
-    finally:
-        try:
-            if t:
-                t.close()
-        except Exception:
-            pass
-
-
 def tab_state(ctx):
     state = []
     for pg in list(ctx.pages):
@@ -120,20 +102,17 @@ with sync_playwright() as p:
     while time.time() < deadline:
         time.sleep(3)
         waited += 3
-        if any_signed_in(ctx):
-            ok = True
-            break
-        # Sturdiest check: SSO is done even if Outlook is showing a first-run/onboarding
-        # screen we don't recognize. Require that no tab is still on a sign-in page.
+        # The SSO cookie is the ONLY hard evidence that sign-in completed. A rendered page is
+        # not: a brand-new profile shows the title "Outlook" the instant the tab starts
+        # loading — before it has even redirected to the sign-in page — so a UI-based check
+        # reported LOGIN_OK on a fresh profile while nobody had signed in at all. A false
+        # "success" is worse than waiting: setup marches on and every later pull fails.
         if has_auth_cookie(ctx) and not on_idp(ctx):
-            ok = True
-            break
-        # They may have signed in and then navigated elsewhere — verify the session directly.
-        if waited % 15 == 0 and session_works(ctx):
             ok = True
             break
         if waited % 15 == 0:  # rich progress: enough to diagnose a stuck run from the log alone
             print(f"  waiting ({waited}s) auth_cookie={has_auth_cookie(ctx)} on_signin_page={on_idp(ctx)} "
+                  f"mailbox_ui={any_signed_in(ctx)} "
                   f"tabs={[(t['url'][:55], t['title'][:34]) for t in tab_state(ctx)]}", flush=True)
 
     if ok:

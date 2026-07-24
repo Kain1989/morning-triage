@@ -68,24 +68,6 @@ def on_idp(ctx):
     return False
 
 
-def session_works(ctx):
-    """Probe the recordings page in a throwaway tab, without disturbing the user's page."""
-    t = None
-    try:
-        t = ctx.new_page()
-        t.goto(URL, wait_until="domcontentloaded", timeout=25000)
-        t.wait_for_timeout(4000)
-        return signed_in_page(t)
-    except Exception:
-        return False
-    finally:
-        try:
-            if t:
-                t.close()
-        except Exception:
-            pass
-
-
 def tab_state(ctx):
     state = []
     for pg in list(ctx.pages):
@@ -109,18 +91,15 @@ with sync_playwright() as p:
     while time.time() < deadline:
         time.sleep(3)
         waited += 3
-        if any_signed_in(ctx):
-            ok = True
-            break
-        # Sturdiest check: signed in even if Zoom is showing a screen we don't recognize.
+        # Same rule as the M365 login: the signed-in cookie is the only hard evidence. A page
+        # can render "My Recordings - Zoom" before it redirects to the sign-in page, so a
+        # UI-based check can call success on a profile nobody has signed into yet.
         if has_auth_cookie(ctx) and not on_idp(ctx):
-            ok = True
-            break
-        if waited % 15 == 0 and session_works(ctx):
             ok = True
             break
         if waited % 15 == 0:  # rich progress: enough to diagnose a stuck run from the log alone
             print(f"  waiting ({waited}s) auth_cookie={has_auth_cookie(ctx)} on_signin_page={on_idp(ctx)} "
+                  f"recordings_ui={any_signed_in(ctx)} "
                   f"tabs={[(t['url'][:55], t['title'][:34]) for t in tab_state(ctx)]}", flush=True)
 
     if ok:

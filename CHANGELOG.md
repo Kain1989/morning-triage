@@ -4,6 +4,13 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.2.3
+
+### Fixed
+- **A brand-new profile reported `LOGIN_OK` within seconds — before anyone could sign in — and closed the window.** Navigating to `outlook.office.com/mail` renders the title "Outlook" *before* the redirect to the sign-in page, and the UI-based check matched on that title alone. A false success is worse than a hang: setup marches on and every later pull fails as `NOT_SIGNED_IN`. Sign-in is now decided **only** by the SSO cookie **plus** "no tab is still on a sign-in page"; the UI checks are kept purely as diagnostics.
+
+  Found by running the login against an **empty profile** — the one thing that actually reproduces a new user, since an established profile has long since passed every first-run screen. Verified end to end on that empty profile: it waited through the whole sign-in, correctly kept waiting during the window where the cookie already exists but the user is still on the login page, reported `LOGIN_OK` only once the flow completed, and `whoami` then read the identity straight out of the fresh profile.
+
 ## 0.2.2
 
 ### Fixed
