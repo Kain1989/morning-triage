@@ -19,8 +19,8 @@ All settings come from the environment (load `.env` at the plugin root if presen
 | `MT_WORKSPACE_DIR` | *(unset)* | Optional codebase to verify factual answers against before drafting. |
 | `MT_JIRA_ENABLED` / `MT_JIRA_PROJECT` / `MT_JIRA_ASSIGNEE_ACCOUNT_ID` | `0` | Optional: file Jira issues for new actionable work. |
 | `MT_SLACK_ENABLED` / `MT_SLACK_CHANNEL_ID` | `0` | Optional: post the digest summary to a Slack channel. |
-| `MT_FIRST_RUN_DAYS` | `3` | How far back to look the **first** time a Teams conversation is seen. Afterwards each conversation resumes from its own watermark (i.e. from where you last read). |
-| `MT_MARK_MAIL_READ` | `0` | Optional: after the digest is written, mark the triaged mail as read (writes to the mailbox). |
+| `MT_LOOKBACK_DAYS` | `3` | How far back **every** source looks: Teams' first look at a conversation (afterwards it resumes from that conversation's watermark), how much of the inbox is read, and how old a Zoom meeting may be. |
+| `MT_MARK_MAIL_READ` | `1` | Mark digested mail read and leave only action items unread. Set `0` to never touch mail state. |
 
 ## Running commands
 
@@ -88,14 +88,16 @@ Then:
 - If `MT_SLACK_ENABLED=1`, post a short (<15 line) summary to channel `MT_SLACK_CHANNEL_ID` via the Slack MCP. This is the one pre-approved outbound write.
 - Finish with the digest as your final chat message so the user sees it.
 
-## STEP 5 — Optional: mark the triaged mail as read
+## STEP 5 — Reflect the triage in the inbox (on by default)
 
-Teams conversations are already marked read as a side effect of opening them to read the thread. **Mail is not** — reading the inbox list never marks anything, so unread mail stays unread unless you do this step.
+The point of this plugin is that the user reads the **digest** instead of the inbox. So what you digested should stop competing for attention, and only what needs their action should stand out.
 
-Only when `MT_MARK_MAIL_READ=1` (it writes to the mailbox; off by default), and only **after** the digest is written:
+Unless `MT_MARK_MAIL_READ=0`, run this **after** the digest is written:
 
 ```bash
-bash "$ROOT/setup.sh" --run mark_mail_read.py --limit 50
+bash "$ROOT/setup.sh" --run mark_mail.py --limit 50 --unread "<fragment>" --unread "<fragment>"
 ```
 
-Pass `--keep "<sender or subject fragment>"` (repeatable) for anything you listed as needs-reply, so those stay unread as a reminder. Add `--dry-run` first if you want to show the user what would be marked. Report how many were marked.
+Pass one `--unread` for **every item you listed as needs-reply or a task**, using a distinctive sender or subject fragment. Those are kept — or set back to — unread, so they are the only mail still standing out in Outlook. Everything else you digested is marked read. Use `--dry-run` first if the user wants a preview. Report the counts.
+
+Teams needs no equivalent step: opening a conversation already marks it read, and Teams mark-as-unread is not solvable headless — so for Teams, the digest itself is the reminder.

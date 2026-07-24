@@ -8,6 +8,11 @@ from playwright.sync_api import sync_playwright
 
 STATE = os.path.expanduser(os.environ.get("MT_STATE_DIR", "~/.morning-triage"))
 PROFILE = os.path.join(STATE, "o365_profile")
+# The inbox list is newest-first, so rows are a proxy for the lookback window: read enough of
+# them to cover MT_LOOKBACK_DAYS days. Each row keeps its own timestamp text, so triage can
+# still tell how old a message is.
+LOOKBACK_DAYS = float(os.environ.get("MT_LOOKBACK_DAYS", "3"))
+MAX_ROWS = int(os.environ.get("MT_MAIL_ROWS", str(int(max(30, LOOKBACK_DAYS * 25)))))
 
 
 def signed_out(url):
@@ -30,7 +35,7 @@ def main():
         out["signed_in"] = True
 
         rows = page.locator("div[role='option']")
-        for i in range(min(rows.count(), 30)):
+        for i in range(min(rows.count(), MAX_ROWS)):
             try:
                 al = rows.nth(i).get_attribute("aria-label") or rows.nth(i).inner_text()
             except Exception:

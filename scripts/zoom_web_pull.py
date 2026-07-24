@@ -24,12 +24,15 @@ import argparse
 import json
 import os
 import re
+from datetime import datetime
 from urllib.parse import quote
 from playwright.sync_api import sync_playwright
 
 STATE = os.path.expanduser(os.environ.get("MT_STATE_DIR", "~/.morning-triage"))
 PROFILE = os.path.join(STATE, "zoom_profile")
 BASE = os.environ.get("MT_ZOOM_BASE", "https://zoom.us").rstrip("/")
+# Plugin-wide lookback window, shared with the Teams and mail collectors.
+LOOKBACK_DAYS = float(os.environ.get("MT_LOOKBACK_DAYS", "3"))
 
 
 def slug(s):
@@ -42,6 +45,18 @@ def strip_html(s):
     s = re.sub(r"<br\s*/?>", "\n", s, flags=re.I)
     s = re.sub(r"<[^>]+>", "", s)
     return re.sub(r"\n{3,}", "\n\n", s).strip()
+
+
+def _within_days(when, days):
+    """True when a 'Mon D, YYYY H:MM AM' stamp falls inside the window.
+    Missing/unparseable stamps are KEPT rather than silently dropped."""
+    if not when or days <= 0:
+        return True
+    try:
+        dt = datetime.strptime(" ".join(str(when).split()), "%b %d, %Y %I:%M %p")
+    except Exception:
+        return True
+    return (datetime.now() - dt).total_seconds() <= days * 86400
 
 
 def signed_out(url):
@@ -61,7 +76,7 @@ def _anchor_topic(txt):
 
 
 # ---------- recordings + transcripts (My + Shared) ----------
-def collect_recordings(ctx, sources, limit, out):
+def collect_recordings(ctx, sources, limit, out, days):
     page = ctx.pages[0] if ctx.pages else ctx.new_page()
     results = []
     for source, path in sources:
@@ -84,6 +99,7 @@ def collect_recordings(ctx, sources, limit, out):
             if h and h not in seen:
                 seen.add(h)
                 items.append((h, a.get("t") or ""))
+        stop = False
         for href, anchor_text in items[:limit]:
             url = href if href.startswith("http") else BASE + href
             entry = {"source": source, "link": url, "files": []}
@@ -110,35 +126,42 @@ def collect_recordings(ctx, sources, limit, out):
                 dm = re.search(r"([A-Z][a-z]{2} \d{1,2}, \d{4} \d{2}:\d{2} [AP]M)", body)
                 when = dm.group(1) if dm else ""
                 entry["topic"], entry["start_time"] = topic[:120], when
-                has_transcript = "Audio transcript" in body
-                entry["has_transcript"] = has_transcript
-                if has_transcript:
-                    try:
-                        with ctx.expect_page(timeout=15000) as np:
-                            dpage.get_by_text("Play", exact=True).first.click()
-                        pp = np.value
-                        pp.on("response", on_resp)
-                        pp.wait_for_timeout(15000)
-                        pp.close()
-                    except Exception as e:
-                        entry["player_error"] = str(e)[:150]
-                base = f"{slug(when) or 'undated'}_{slug(topic)}"
-                for i, (u, b) in enumerate(vtts):
-                    suffix = f"_{i}" if i else ""
-                    fn = os.path.join(out, f"{base}{suffix}.vtt")
-                    with open(fn, "wb") as f:
-                        f.write(b)
-                    entry["files"].append(fn)
+                if not _within_days(when, days):
+                    # The recordings list is newest-first, so everything below is older too.
+                    entry["skipped"] = f"older than {days}d"
+                    stop = True
+                else:
+                    has_transcript = "Audio transcript" in body
+                    entry["has_transcript"] = has_transcript
+                    if has_transcript:
+                        try:
+                            with ctx.expect_page(timeout=15000) as np:
+                                dpage.get_by_text("Play", exact=True).first.click()
+                            pp = np.value
+                            pp.on("response", on_resp)
+                            pp.wait_for_timeout(15000)
+                            pp.close()
+                        except Exception as e:
+                            entry["player_error"] = str(e)[:150]
+                    base = f"{slug(when) or 'undated'}_{slug(topic)}"
+                    for i, (u, b) in enumerate(vtts):
+                        suffix = f"_{i}" if i else ""
+                        fn = os.path.join(out, f"{base}{suffix}.vtt")
+                        with open(fn, "wb") as f:
+                            f.write(b)
+                        entry["files"].append(fn)
             except Exception as e:
                 entry["error"] = str(e)[:200]
             finally:
                 dpage.close()
             results.append(entry)
+            if stop:
+                break
     return results
 
 
 # ---------- AI Companion summaries (My + Shared) via REST API ----------
-def collect_summaries(ctx, scopes, limit, out):
+def collect_summaries(ctx, scopes, limit, out, days):
     # Warm up the summary SPA so the REST session is fully established.
     try:
         wp = ctx.pages[0] if ctx.pages else ctx.new_page()
@@ -154,8 +177,8 @@ def collect_summaries(ctx, scopes, limit, out):
     seen_ids = set()
 
     for scope, list_url in scopes:
-        page_n, got = 1, 0
-        while got < limit:
+        page_n, got, stop_scope = 1, 0, False
+        while got < limit and not stop_scope:
             try:
                 r = req.get(f"{BASE}{list_url}{page_n}", timeout=30000)
                 data = r.json()
@@ -178,6 +201,10 @@ def collect_summaries(ctx, scopes, limit, out):
                 topic = (it.get("topic") or "meeting")
                 when = it.get("createTime") or ""
                 host = it.get("host") or ""
+                if not _within_days(when, days):
+                    # Summary lists are newest-first, so the rest of this scope is older too.
+                    stop_scope = True
+                    break
                 entry = {"scope": scope, "topic": topic[:120], "host": host, "created": when,
                          "meeting_number": it.get("meetingNumber"), "doc_share_url": it.get("docShareUrl")}
                 try:
@@ -215,6 +242,8 @@ def collect_summaries(ctx, scopes, limit, out):
                 results.append(entry)
                 got += 1
 
+            if stop_scope:
+                break
             total_page = page_result.get("totalPage") or page_result.get("totalPages")
             if (total_page and page_n >= total_page) or len(items) < (page_result.get("pageSize") or 15):
                 break
@@ -225,6 +254,8 @@ def collect_summaries(ctx, scopes, limit, out):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=10)
+    ap.add_argument("--days", type=float, default=LOOKBACK_DAYS,
+                    help="only collect meetings from the last N days (default: MT_LOOKBACK_DAYS)")
     ap.add_argument("--out", default=os.path.join(STATE, "zoom_transcripts"))
     ap.add_argument("--headed", action="store_true")
     ap.add_argument("--no-recordings", action="store_true")
@@ -245,13 +276,14 @@ def main():
 
         if not args.no_recordings:
             index["recordings"] = collect_recordings(
-                ctx, [("my", "/recording"), ("shared", "/recording/shared")], args.limit, args.out)
+                ctx, [("my", "/recording"), ("shared", "/recording/shared")],
+                args.limit, args.out, args.days)
         if not args.no_summaries:
             index["summaries"] = collect_summaries(
                 ctx,
                 [("my", "/rest/meeting/host_summary_list?page="),
                  ("shared", "/rest/meeting/summary/user/share_with_me?search=&page=")],
-                args.limit, args.out)
+                args.limit, args.out, args.days)
         ctx.close()
 
     with open(os.path.join(args.out, "index.json"), "w") as f:
