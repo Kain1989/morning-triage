@@ -38,7 +38,7 @@ Start with `bash "$ROOT/setup.sh" --paths`: it prints `{state, inbox, zoom_trans
 
 ## STEP 0 — Preflight
 
-Run `bash "$ROOT/setup.sh" --check` and read its JSON. Exit code `4`/`3` → tell the user to run `setup.sh`. Exit code `2` → note which login is missing (`o365_login.py` and/or `zoom_web_login.py`) and continue with whatever IS signed in. Surface any `warnings` (e.g. `MT_MY_NAME_TOKENS` unset).
+Run `bash "$ROOT/setup.sh" --check` and read its JSON. Its `plugin_version` field is the version of the code **actually installed** — a plugin host may keep displaying the version recorded at install time, so trust this field, not the UI, when the user asks what they're running. Exit code `4`/`3` → tell the user to run `setup.sh`. Exit code `2` → note which login is missing (`o365_login.py` and/or `zoom_web_login.py`) and continue with whatever IS signed in. Surface any `warnings` (e.g. `MT_MY_NAME_TOKENS` unset).
 
 ## STEP 1 — Teams + Outlook (headless O365)
 

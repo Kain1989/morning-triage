@@ -4,6 +4,11 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.3.1
+
+### Added
+- `setup.sh --check` now reports `plugin_version`, read straight out of the installed code. A plugin host can keep displaying the version it recorded at **install** time even after the code has been updated (observed in the field: the UI said 0.1.0 while the installed code already had the 0.2.0 `/setup` skill), so there was no reliable way to tell what was actually running. README and the skill now point at this field rather than the UI.
+
 ## 0.3.0
 
 ### Fixed

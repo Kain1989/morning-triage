@@ -44,6 +44,10 @@ Or clone this repo and add it as a local marketplace with `/plugin marketplace a
 
 The two logins are independent and last for weeks; you only redo one when a run reports `NOT_SIGNED_IN` for it.
 
+### Which version am I actually running?
+
+Run `./setup.sh --check` and read `plugin_version`. Your plugin host may keep showing the version it recorded at **install** time even after the code has been updated, so that field — read straight out of the installed code — is the one to trust. To pull the latest, update the marketplace (`/plugin marketplace update morning-triage-marketplace`) or hit **Update** in the plugins UI; if the number still looks stale afterwards, uninstall and reinstall.
+
 ## Run
 
 In Claude Code:

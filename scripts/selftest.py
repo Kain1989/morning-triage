@@ -14,7 +14,23 @@ import os
 import sys
 
 STATE = os.path.expanduser(os.environ.get("MT_STATE_DIR", "~/.morning-triage"))
-report = {"state_dir": STATE, "checks": {}, "warnings": []}
+
+
+def _plugin_version():
+    """Read the version out of the installed code itself.
+
+    A plugin host may keep showing the version recorded at install time even after the code has
+    been updated, so the UI number cannot be trusted to tell you what is actually running.
+    """
+    try:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, ".claude-plugin", "plugin.json")) as f:
+            return json.load(f).get("version", "unknown")
+    except Exception:
+        return "unknown"
+
+
+report = {"plugin_version": _plugin_version(), "state_dir": STATE, "checks": {}, "warnings": []}
 
 
 def check(name, ok, detail=""):
