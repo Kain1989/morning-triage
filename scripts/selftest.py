@@ -60,14 +60,16 @@ o365_ok = check("o365_profile", os.path.isdir(o365) and bool(os.listdir(o365)), 
 zoom_ok = check("zoom_profile", os.path.isdir(zoom) and bool(os.listdir(zoom)), zoom)
 
 # 5) non-fatal config warnings
-if not os.environ.get("MT_MY_NAME_TOKENS", "").strip():
+_tok = os.environ.get("MT_MY_NAME_TOKENS", "").strip().lower()
+if not _tok or "jane doe" in _tok or "jdoe" in _tok:
     report["warnings"].append(
-        "MT_MY_NAME_TOKENS is empty — no Teams message will be attributed to you, so every "
-        "open question is treated as needs-reply. Set it to fragments of your display name.")
-if os.environ.get("MT_ZOOM_BASE", "https://zoom.us").rstrip("/") == "https://zoom.us":
+        "MT_MY_NAME_TOKENS is empty or still the .env.example placeholder — set it to fragments of "
+        "your real display name, or every open question is treated as needs-reply.")
+_zb = os.environ.get("MT_ZOOM_BASE", "https://zoom.us").rstrip("/")
+if _zb == "https://zoom.us" or "yourorg" in _zb:
     report["warnings"].append(
-        "MT_ZOOM_BASE is still the default — set it to your org portal (e.g. https://yourorg.zoom.us) "
-        "or Zoom transcript collection has nothing to point at.")
+        "MT_ZOOM_BASE is unset or still the placeholder — set it to your org portal (e.g. "
+        "https://acme.zoom.us) or Zoom collection has nothing to point at.")
 
 # decide exit code (most fundamental failure wins)
 if not state_ok:
