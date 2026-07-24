@@ -25,6 +25,7 @@ Prints JSON {marked_read, marked_unread, kept, rows, dry_run} or {"error": ...}.
 import argparse
 import json
 import os
+import re
 from playwright.sync_api import sync_playwright
 
 STATE = os.path.expanduser(os.environ.get("MT_STATE_DIR", "~/.morning-triage"))
@@ -77,6 +78,47 @@ def _ctx_action(page, row, item):
         return False
 
 
+def _search_and_mark_unread(page, query, dry_run=False):
+    """Locate an already-read message via OWA **search** and set it back to unread.
+
+    Scanning the list DOM does not work here: the inbox is virtualized — only ~10 rows exist at
+    a time and scrolling does not reliably materialize more — so anything below the fold is
+    invisible to a plain scan. Search is the reliable way to reach it.
+    Returns the row label on success, else None.
+    """
+    words = [w for w in re.findall(r"[a-z0-9]+", query.lower()) if len(w) >= 4]
+    try:
+        box = page.locator("input[aria-label*='Search']").first
+        box.click(timeout=8000)
+        page.wait_for_timeout(800)
+        box.fill("")
+        page.keyboard.type(query)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(6000)
+        rows = page.locator("div[role='option']")
+        for i in range(min(rows.count(), 15)):
+            lbl = _label(rows.nth(i))
+            low = lbl.lower()
+            if low.startswith("unread"):
+                continue  # already unread — nothing to restore
+            if words and not any(w in low for w in words):
+                continue
+            if dry_run:
+                return lbl
+            return lbl if _ctx_action(page, rows.nth(i), "Mark as unread") else None
+        return None
+    except Exception:
+        return None
+    finally:
+        try:  # leave the mailbox on the inbox, not on a search result
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(800)
+            page.goto(OWA, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(3000)
+        except Exception:
+            pass
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=50, help="max rows to touch per phase")
@@ -127,21 +169,16 @@ def main():
                         break
 
             # Phase 2 — items needing action that were ALREADY read go back to UNREAD.
+            # Reached via search, because the list is virtualized (see _search_and_mark_unread).
             if needs_action:
                 _set_filter(page, "All")
-                rows = page.locator("div[role='option']")
-                for i in range(min(rows.count(), 60)):
+                for pat in args.unread:
                     if out["marked_unread"] >= args.limit:
                         break
-                    row = rows.nth(i)
-                    lbl = _label(row)
-                    low = lbl.lower()
-                    if not any(k in low for k in needs_action) or low.startswith("unread"):
-                        continue  # not an action item, or already unread
-                    if args.dry_run:
+                    lbl = _search_and_mark_unread(page, pat, dry_run=args.dry_run)
+                    if lbl and args.dry_run:
                         out["rows"].append({"would_mark_unread": lbl})
-                        continue
-                    if _ctx_action(page, row, "Mark as unread"):
+                    elif lbl:
                         out["marked_unread"] += 1
                         out["rows"].append({"marked_unread": lbl})
         except Exception as e:
@@ -155,6 +192,10 @@ def main():
             except Exception:
                 pass
             ctx.close()
+    if args.dry_run:
+        out["note"] = ("PREVIEW IS PARTIAL: the inbox list is virtualized, so a dry run only sees the "
+                       "rows rendered right now. A real run keeps surfacing more as marked rows leave "
+                       "the Unread view, and will mark MORE than this preview lists.")
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 

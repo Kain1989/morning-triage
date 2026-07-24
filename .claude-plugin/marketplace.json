@@ -11,7 +11,7 @@
       "name": "morning-triage",
       "source": "./",
       "description": "Collect Teams/Outlook/Zoom headlessly, triage what needs your reply with closure rules, and write a morning digest with paste-ready drafts.",
-      "version": "0.1.0"
+      "version": "0.2.0"
     }
   ]
 }
