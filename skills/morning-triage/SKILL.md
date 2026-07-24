@@ -42,9 +42,13 @@ Run `"$PY" "$ROOT/scripts/pull_inbox.py"`. It writes `$MT_STATE_DIR/inbox/teams_
 
 **Outlook** JSON: `{signed_in, mail, calendar}`. `mail` = today's inbox rows (unread flag + sender + subject + preview); focus on work-relevant unread, skip promos/newsletters. `calendar` = today's meetings with time/organizer.
 
-## STEP 2 — Zoom transcripts
+## STEP 2 — Zoom recordings, transcripts & AI summaries
 
-Run `"$PY" "$ROOT/scripts/zoom_web_pull.py" --limit 5 --out "$MT_STATE_DIR/zoom_transcripts"`. For any NEW transcript since the last run (compare against `index.json` in that dir), extract: decisions, action items (owner + ask), open questions. If it prints `NOT_SIGNED_IN`, skip transcripts this run and note that the Zoom session needs re-login (`zoom_web_login.py`).
+Run `"$PY" "$ROOT/scripts/zoom_web_pull.py" --limit 5 --out "$MT_STATE_DIR/zoom_transcripts"`. It covers BOTH **My Recordings** and **Shared with me**, and pulls:
+- **Transcripts** — `<out>/<date>_<topic>.vtt` per recording (my + shared).
+- **AI Companion summaries** — `<out>/summaries/<date>_<topic>.summary.md` (overview + next steps + chapters) plus the raw `.summary.json`.
+
+It writes `<out>/index.json` = `{recordings:[{source, topic, has_transcript, files}], summaries:[{scope, topic, overview, next_steps, chapters, file}]}`, where `source`/`scope` is `my` | `shared`. For anything NEW since the last run (compare against the prior `index.json`), extract decisions, action items (owner + ask) and open questions — prefer a meeting's `overview`/`next_steps` when a summary exists, else read its transcript. If it prints `NOT_SIGNED_IN`, skip Zoom this run and note the Zoom session needs re-login (`zoom_web_login.py`).
 
 ## STEP 3 — Triage (closure rules — this is the whole point)
 

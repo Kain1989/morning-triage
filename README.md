@@ -4,7 +4,7 @@ A [Claude Code](https://claude.com/claude-code) plugin that runs your morning co
 
 ## What it does
 
-- **Teams / Outlook / Zoom**, collected via headless Playwright over saved browser sessions. No computer-use, no cursor takeover, no per-run auth dialogs — it runs unattended.
+- **Teams / Outlook / Zoom**, collected via headless Playwright over saved browser sessions. No computer-use, no cursor takeover, no per-run auth dialogs — it runs unattended. Zoom covers both **My Recordings** and **Shared with me**, pulling transcripts *and* AI Companion summaries (overview + next steps + chapters).
 - **Closure-rule triage.** A thread only surfaces as *needs-reply* if its last message is an unanswered question to you. Threads you already answered, that someone else answered, or that were acknowledged (👍/✅/"done") are dropped. An incremental **watermark** means each run only looks at messages newer than the last run.
 - **A digest** in your language: a needs-reply table with drafts, today's calendar, meeting takeaways from new transcripts, and carry-over items from yesterday. Optional Jira filing and Slack summary.
 
@@ -70,7 +70,7 @@ setup.sh ── venv + Playwright + one-time logins ──►  $MT_STATE_DIR/{o3
 /morning-triage (skills/morning-triage/SKILL.md)          │ reuses saved sessions
      │                                                    ▼
      ├─ scripts/pull_inbox.py ─► outlook_pull.py + teams_pull.py ─► $MT_STATE_DIR/inbox/*.json
-     ├─ scripts/zoom_web_pull.py ─────────────────────────────────► $MT_STATE_DIR/zoom_transcripts/
+     ├─ scripts/zoom_web_pull.py ─► my + shared: transcripts + AI summaries ─► $MT_STATE_DIR/zoom_transcripts/
      └─ triage (closure rules + watermark) ──────────────────────► $MT_LOG_DIR/<date>.md  (the digest)
 ```
 
