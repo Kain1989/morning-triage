@@ -163,7 +163,9 @@ def collect_summaries(ctx, scopes, limit, out):
                 results.append({"scope": scope, "error": f"list failed: {str(e)[:120]}"})
                 break
             result = data.get("result") or {}
-            items = result.get("data") or []
+            # "My" returns rows as result.data; "Shared with me" wraps them in result.pageResult.data.
+            page_result = result.get("pageResult") or result
+            items = page_result.get("data") or []
             if not items:
                 break
             for it in items:
@@ -213,8 +215,8 @@ def collect_summaries(ctx, scopes, limit, out):
                 results.append(entry)
                 got += 1
 
-            total_page = result.get("totalPage") or result.get("totalPages")
-            if (total_page and page_n >= total_page) or len(items) < (result.get("pageSize") or 15):
+            total_page = page_result.get("totalPage") or page_result.get("totalPages")
+            if (total_page and page_n >= total_page) or len(items) < (page_result.get("pageSize") or 15):
                 break
             page_n += 1
     return results
