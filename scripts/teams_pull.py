@@ -20,6 +20,30 @@ STATE = os.path.expanduser(os.environ.get("MT_STATE_DIR", "~/.morning-triage"))
 PROFILE = os.path.join(STATE, "o365_profile")
 TEAMS = "https://teams.cloud.microsoft/v2/"
 
+# Teams web is a heavy SPA: `domcontentloaded` fires long before the app bar exists, and the
+# FIRST run on a freshly signed-in profile downloads the entire app bundle. Sleeping a fixed
+# amount silently produced "signed in, but the Chat tab wouldn't open / no chats triaged" on
+# newly provisioned machines — so wait for a real anchor element with a generous budget.
+APP_LOAD_TIMEOUT_S = float(os.environ.get("MT_TEAMS_LOAD_TIMEOUT_S", "90"))
+APP_READY_SELECTORS = ("button[aria-label*='Chat']", "[data-tid='app-bar-chat']",
+                       "button[aria-label*='Activity']", "[data-tid='app-bar-activity']")
+# How long a single click target may take to become visible (cold UI needs more than a beat).
+CLICK_VISIBLE_MS = float(os.environ.get("MT_TEAMS_CLICK_TIMEOUT_MS", "5000"))
+
+
+def wait_app_ready(page, budget_s):
+    """Block until the Teams app bar actually renders, or the budget runs out."""
+    deadline = time.time() + budget_s
+    while time.time() < deadline:
+        for sel in APP_READY_SELECTORS:
+            try:
+                if page.locator(sel).first.is_visible(timeout=1500):
+                    return True
+            except Exception:
+                pass
+        page.wait_for_timeout(1500)
+    return False
+
 # --- Channel-scrape tunables (env-overridable; safe defaults) -----------------
 SCRAPE_CHANNELS = os.environ.get("TEAMS_SCRAPE_CHANNELS", "1") != "0"
 CHANNEL_BUDGET_S = float(os.environ.get("TEAMS_CHANNEL_BUDGET_S", "100"))   # wall-clock cap for the WHOLE channel phase
@@ -624,18 +648,32 @@ def main():
 
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto(TEAMS, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(16000)
+        ready = wait_app_ready(page, APP_LOAD_TIMEOUT_S)
+        if not ready:
+            # A fresh profile often just needs one reload once the bundle has landed.
+            try:
+                page.reload(wait_until="domcontentloaded", timeout=60000)
+            except Exception:
+                pass
+            ready = wait_app_ready(page, APP_LOAD_TIMEOUT_S)
         if signed_out(page.url):
             print(json.dumps({"error": "NOT_SIGNED_IN", "hint": "re-run scripts/o365_login.py"}))
             ctx.close()
             return
         out["signed_in"] = True
+        out["app_ready"] = ready
+        if not ready:
+            out["warning"] = (
+                f"Teams web did not finish loading within {APP_LOAD_TIMEOUT_S:.0f}s (tried twice). "
+                "A first run on a freshly signed-in profile downloads the whole app — raise "
+                "MT_TEAMS_LOAD_TIMEOUT_S and re-run; chats will be empty this run.")
+        page.wait_for_timeout(2500)  # brief settle once the app bar is up
 
         def click_first(selectors, settle=6000):
             for sel in selectors:
                 try:
                     loc = page.locator(sel).first
-                    if loc.is_visible(timeout=2500):
+                    if loc.is_visible(timeout=CLICK_VISIBLE_MS):
                         loc.click()
                         page.wait_for_timeout(settle)
                         return True

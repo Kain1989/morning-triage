@@ -4,6 +4,11 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.2.1
+
+### Fixed
+- **"Signed in, but the Chat/Teams tab wouldn't open — no chats triaged."** Teams web is a heavy SPA, and the collector slept a fixed 16s after `domcontentloaded` before looking for the app bar. That is enough on a warm profile, but a **freshly signed-in profile downloads the entire app bundle first** — so the Chat button wasn't visible yet, `click_first` gave up after 2.5s, and the run returned zero chats while otherwise looking healthy. The collector now waits for the app bar to actually render (`MT_TEAMS_LOAD_TIMEOUT_S`, default 90s), reloads once and retries if it doesn't, reports `app_ready` in its JSON, and warns explicitly when the app never finished loading. Click targets now honour `MT_TEAMS_CLICK_TIMEOUT_MS` (default 5s) instead of a hard-coded 2.5s.
+
 ## 0.2.0
 
 Everything here came out of running the plugin on real machines.
