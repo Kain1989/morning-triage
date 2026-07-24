@@ -52,9 +52,13 @@ def _rail_count(page):
 
 
 def open_chat(page, click_first):
-    """Open the Chat tab, without depending on the UI language."""
-    if _rail_count(page) > 0:
-        return True
+    """Open the Chat tab, without depending on the UI language.
+
+    Deliberately does NOT short-circuit on "a tree is already rendered": the Activity view also
+    contains role=treeitem rows (the Quick views nav), so treating those as the chat rail left
+    the scraper sitting on Activity and reporting almost no conversations. Navigating is cheap
+    and idempotent — always do it.
+    """
     try:  # 1) hash route — works regardless of locale
         page.goto(TEAMS + "#/chat", wait_until="domcontentloaded", timeout=45000)
         page.wait_for_timeout(6000)
@@ -144,7 +148,10 @@ NON_TEAM_LABELS = {"discover", "see all your teams", "see all channels", ""}
 # thread's last sender / who-answered — NOT off the activity-feed history. Watermark stores,
 # per conversation, the newest message ISO ts seen, so the next run resumes exactly there.
 SCRAPE_CHATS = os.environ.get("TEAMS_SCRAPE_CHATS", "1") != "0"
-CHAT_BUDGET_S = float(os.environ.get("TEAMS_CHAT_BUDGET_S", "1200"))   # wall-clock cap for the whole chat phase (20 min; correctness over speed)
+# Wall-clock cap for the whole chat phase. Must stay well under the subprocess timeout in
+# pull_inbox.py (default 540s), which in turn stays under the caller's ~600s ceiling — an
+# internal budget larger than the outer one just gets the run killed with nothing written.
+CHAT_BUDGET_S = float(os.environ.get("TEAMS_CHAT_BUDGET_S", "380"))
 MAX_CHATS = int(os.environ.get("TEAMS_MAX_CHATS", "200"))             # safety cap on conversations opened (effectively "all")
 MAX_SCROLL_ROUNDS = int(os.environ.get("TEAMS_MAX_SCROLL_ROUNDS", "60"))  # per-conversation scroll-up cap (safety vs a huge thread)
 PER_CHAT_BUDGET_S = float(os.environ.get("TEAMS_PER_CHAT_BUDGET_S", "120"))  # per-conversation wall-clock cap

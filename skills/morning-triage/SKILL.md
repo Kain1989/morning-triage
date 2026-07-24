@@ -42,7 +42,16 @@ Run `bash "$ROOT/setup.sh" --check` and read its JSON. Exit code `4`/`3` → tel
 
 ## STEP 1 — Teams + Outlook (headless O365)
 
-Run `bash "$ROOT/setup.sh" --run pull_inbox.py`. It writes `teams_<date>.json` and `outlook_<date>.json` into the `inbox` directory reported by `--paths` (graceful: an error there is written as JSON, it never blocks). Read both files.
+Run these as **two separate Bash calls**. Teams alone can need most of a Bash call's ~600s ceiling; putting both in one call is what produced bare `Teams TIMEOUT` runs with no data at all:
+
+```bash
+bash "$ROOT/setup.sh" --run pull_inbox.py --only outlook    # quick, ~1 min
+bash "$ROOT/setup.sh" --run pull_inbox.py --only teams      # slow — give this call your maximum timeout (~600s)
+```
+
+Both write into the `inbox` directory reported by `--paths` (graceful: an error is written as JSON, it never blocks). Read both files.
+
+**Never let a Teams failure look like "no messages".** If the Teams JSON has `app_ready: false`, an `error`, or an empty `chat_threads` carrying a `debug` block, say so explicitly in the digest — and surface `debug.screenshot` if present so the user can look at what the page actually showed. Group-chat needs-reply items are a blind spot in that case, and the user must know.
 
 **Teams** JSON: `{signed_in, activity, chats, chat_threads, channels, ...coverage}`.
 - **`chat_threads` is the PRIMARY signal for "who needs a reply", NOT `activity`.** Each thread is a conversation with activity since its watermark, carrying `messages:[{author, ts, text, is_me}]` plus `last_sender`, `last_is_me`, `msg_count`, `new_count` (messages strictly after the watermark), `oldest_ts`, `newest_ts`. Focus on threads with `new_count > 0`.
@@ -101,3 +110,9 @@ bash "$ROOT/setup.sh" --run mark_mail.py --limit 50 --unread "<fragment>" --unre
 Pass one `--unread` for **every item you listed as needs-reply or a task**, using a distinctive sender or subject fragment. Those are kept — or set back to — unread, so they are the only mail still standing out in Outlook. Everything else you digested is marked read. Use `--dry-run` first if the user wants a preview. Report the counts.
 
 Teams needs no equivalent step: opening a conversation already marks it read, and Teams mark-as-unread is not solvable headless — so for Teams, the digest itself is the reminder.
+
+## STEP 6 — First run only: offer to make it a daily routine
+
+If this looks like the user's **first** run (the `log` directory from `--paths` holds no earlier digest), ask once whether they want this to run automatically on weekday mornings. Propose **10:00 in their local timezone** as the default, and let them choose a different time.
+
+If they accept, create the recurring task with whatever scheduling this Claude Code provides (e.g. the `schedule` skill / scheduled tasks), pointing it at `/morning-triage`. Tell them what you created and how to cancel it. If they decline, don't bring it up again on later runs.

@@ -4,6 +4,15 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.3.0
+
+### Fixed
+- **Bare `Teams TIMEOUT`, no data at all.** The three timeouts did not nest: a Bash call caps out near **600s**, `pull_inbox.py` killed the Teams collector at **240s**, and the collector's own chat phase was budgeted for **1200s**. Teams was being killed mid-run every time, and raising the app-load budget in 0.2.4 only squeezed it further. Budgets now nest — chat phase **380s** < subprocess **540s** < caller ~600s — and `pull_inbox.py --only outlook|teams` lets the two collectors run as **separate** calls, each comfortably inside the ceiling. Measured on a warm profile: Outlook 25s; Teams 133s for 35 conversations, `budget_hit=false`.
+- A Teams failure can no longer be mistaken for "no messages": the skill must report `app_ready:false` / errors / an empty rail (and the `debug.screenshot` path) explicitly in the digest.
+
+### Added
+- **First run offers to schedule itself.** After the first digest, the skill asks once whether to run automatically on weekday mornings, defaulting to **10:00 in the user's local timezone**, and creates the recurring task if accepted.
+
 ## 0.2.4
 
 ### Fixed
