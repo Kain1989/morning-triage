@@ -5,6 +5,7 @@
 # Usage:
 #   ./setup.sh            install deps + create .env   (then edit .env)
 #   ./setup.sh --login    open the browsers for the one-time O365 + Zoom sign-in
+#   ./setup.sh --whoami   print the signed-in M365 display name + name tokens (JSON)
 #   ./setup.sh --check    run the preflight selftest
 set -euo pipefail
 
@@ -61,6 +62,7 @@ case "${1:-}" in
   --login) do_login ;;
   --login-o365) login_one o365_login.py ;;
   --login-zoom) login_one zoom_web_login.py ;;
+  --whoami) exec "$PY" "$HERE/scripts/whoami.py" ;;
   --check) exec "$PY" "$HERE/scripts/selftest.py" ;;
   "")
     install_deps
@@ -71,5 +73,5 @@ case "${1:-}" in
     echo "  2) ./setup.sh --login   # one-time browser sign-in (a window opens)"
     echo "  3) ./setup.sh --check   # verify everything is ready"
     ;;
-  *) echo "Usage: ./setup.sh [--login|--check]"; exit 2 ;;
+  *) echo "Usage: ./setup.sh [--login|--login-o365|--login-zoom|--whoami|--check]"; exit 2 ;;
 esac

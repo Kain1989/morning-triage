@@ -63,13 +63,14 @@ zoom_ok = check("zoom_profile", os.path.isdir(zoom) and bool(os.listdir(zoom)), 
 _tok = os.environ.get("MT_MY_NAME_TOKENS", "").strip().lower()
 if not _tok or "jane doe" in _tok or "jdoe" in _tok:
     report["warnings"].append(
-        "MT_MY_NAME_TOKENS is empty or still the .env.example placeholder — set it to fragments of "
-        "your real display name, or every open question is treated as needs-reply.")
+        "MT_MY_NAME_TOKENS is empty or still a placeholder — run /morning-triage:setup (it "
+        "auto-detects your name from Microsoft 365), or set it by hand; otherwise no message is "
+        "attributed to you and every open question reads as needs-reply.")
 _zb = os.environ.get("MT_ZOOM_BASE", "https://zoom.us").rstrip("/")
-if _zb == "https://zoom.us" or "yourorg" in _zb:
+if "yourorg" in _zb or "example" in _zb:
     report["warnings"].append(
-        "MT_ZOOM_BASE is unset or still the placeholder — set it to your org portal (e.g. "
-        "https://acme.zoom.us) or Zoom collection has nothing to point at.")
+        "MT_ZOOM_BASE looks like a placeholder — the default https://zoom.us serves recordings and "
+        "summaries for most accounts; only override it if your org requires its vanity host.")
 
 # decide exit code (most fundamental failure wins)
 if not state_ok:

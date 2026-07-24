@@ -31,14 +31,14 @@ Or clone this repo and add it as a local marketplace with `/plugin marketplace a
 /morning-triage:setup
 ```
 
-It installs dependencies, asks you two questions (your name, and your Zoom URL), opens a browser to sign in to Microsoft 365 and then Zoom, and verifies everything. Follow the prompts — no shell steps, no editing files.
+**Two sign-ins, nothing to type.** It installs dependencies, opens a browser for you to sign in to Microsoft 365 (one login covers Outlook *and* Teams) and then Zoom, auto-detects your display name from the signed-in M365 profile, and verifies everything.
 
 **Or manually**, from the plugin directory:
 
 ```bash
 ./setup.sh            # create the Playwright venv + scaffold .env
-# edit .env: set MT_MY_NAME_TOKENS (fragments of your name) + MT_ZOOM_BASE (your org Zoom portal)
 ./setup.sh --login    # a browser window opens: complete M365 SSO, then Zoom SSO
+./setup.sh --whoami   # auto-detect your name → put the tokens in .env as MT_MY_NAME_TOKENS
 ./setup.sh --check    # preflight — should print "ready": true
 ```
 
@@ -60,8 +60,8 @@ All settings live in `.env` (see [`.env.example`](.env.example)):
 
 | Var | Purpose |
 |---|---|
-| `MT_MY_NAME_TOKENS` | `;`-separated fragments of your Teams display name — how it tells your own messages apart (closure). |
-| `MT_ZOOM_BASE` | Your org Zoom portal, e.g. `https://yourorg.zoom.us`. |
+| `MT_MY_NAME_TOKENS` | Auto-detected during setup from your M365 profile. `;`-separated name fragments — how it tells your own messages apart (closure). |
+| `MT_ZOOM_BASE` | Defaults to `https://zoom.us`, which serves recordings *and* summaries for most accounts. Override only if your org requires its vanity host. |
 | `MT_STATE_DIR` | Where sessions/watermark/collected data live (default `~/.morning-triage`, outside this repo). |
 | `MT_LOG_DIR` | Where the digest markdown is written. |
 | `MT_DIGEST_LANG` | Language to write the digest in (default English). |

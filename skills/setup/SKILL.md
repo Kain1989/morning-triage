@@ -1,33 +1,33 @@
 ---
 name: setup
-description: One-time guided install for morning-triage — installs dependencies, collects your config, opens a browser to sign in to Microsoft 365 and Zoom, then self-checks. The user just follows the prompts; use this when someone wants to set up / configure / install morning-triage for the first time.
+description: One-time guided install for morning-triage — installs dependencies, opens a browser to sign in to Microsoft 365 and Zoom, auto-detects your name, and self-checks. Two sign-ins and nothing to type; use this when someone wants to set up / configure / install morning-triage for the first time.
 ---
 
-Walk the user through one-time setup, interactively and in order. Do the mechanical steps yourself; pause only when the user must act (answer a question, or sign in via a browser window that opens). Keep each message short and tell the user what's happening. `ROOT` below = `$CLAUDE_PLUGIN_ROOT`.
+Walk the user through one-time setup. It requires **no questions** — just two browser sign-ins; everything else you do yourself. Keep each message short and say what's happening. `ROOT` below = `$CLAUDE_PLUGIN_ROOT`.
 
 ## STEP 1 — Install dependencies
-Run `bash "$ROOT/setup.sh"`. It creates the Playwright venv, installs Chromium, and scaffolds `.env`. If it fails (e.g. no `python3`), tell the user the exact fix and stop here.
+Run `bash "$ROOT/setup.sh"`. It creates the Playwright venv, installs Chromium, and scaffolds `.env`. If it fails (e.g. no `python3`), give the user the exact fix and stop here.
 
-## STEP 2 — Collect config, then write it into `.env`
-Ask the user these (wait for real answers — never guess or invent them):
-1. **Your name as it shows in Teams/Zoom** — a few fragments is fine, e.g. `Jane Doe, jdoe`. This is how triage tells which messages are yours.
-2. **Your organization's Zoom portal URL** — e.g. `https://acme.zoom.us`.
+## STEP 2 — Sign in to Microsoft 365 (a browser window opens)
+Tell the user: "A browser window will open — finish the Microsoft 365 sign-in there. This one login covers both Outlook and Teams. I'll wait."
 
-(Only if the user raises them: digest language — default English; and whether they use Jira/Slack, which are optional and off by default.)
+Run `bash "$ROOT/setup.sh" --login-o365`. **It waits for the user, so give it a long timeout (up to the Bash tool's max, ~600s).** It prints `LOGIN_OK` or `LOGIN_TIMEOUT_OR_FAILED`; on failure, offer one retry.
 
-Then edit `$ROOT/.env` (it was scaffolded from `.env.example` in STEP 1):
-- Set `MT_MY_NAME_TOKENS` to the name fragments joined by `;` — e.g. `MT_MY_NAME_TOKENS="jane doe;jdoe"`.
-- Set `MT_ZOOM_BASE` to their Zoom URL.
-- Leave every other line at its default unless the user asked to change it.
+## STEP 3 — Sign in to Zoom (a browser window opens)
+Tell the user: "Now a Zoom sign-in window will open — sign in as you normally would at zoom.us."
 
-## STEP 3 — Sign in (one service at a time; a browser window opens)
-Two independent logins. Do them one at a time so the user only faces one window. **Each waits for the user to finish signing in, so run it with a long timeout (up to the Bash tool's max, ~600s).**
+Run `bash "$ROOT/setup.sh" --login-zoom` the same way (long timeout, one retry on failure). Nothing org-specific is needed: the collector works off the generic `zoom.us` host, which serves both recordings and AI summaries.
 
-1. Say: "A browser window will open — finish the Microsoft 365 sign-in there (this covers both Outlook and Teams). I'll wait." Then run `bash "$ROOT/setup.sh" --login-o365`. It prints `LOGIN_OK` on success, or `LOGIN_TIMEOUT_OR_FAILED`. If it failed/timed out, offer to retry once.
-2. Say: "Now a Zoom sign-in window will open — finish it there." Then run `bash "$ROOT/setup.sh" --login-zoom`. Same handling.
+## STEP 4 — Auto-detect the user's name (do not ask them)
+Run `bash "$ROOT/setup.sh" --whoami`. On success it prints `{"display_name": "...", "tokens": ["..."]}` read from the signed-in Microsoft 365 profile.
 
-## STEP 4 — Verify and finish
+Write the tokens into `$ROOT/.env` as `MT_MY_NAME_TOKENS="tok1;tok2;tok3"`, then tell the user which name was detected so they can correct it if it looks wrong. This is what lets triage tell your own messages apart from everyone else's.
+
+- `{"error": "NOT_SIGNED_IN"}` → STEP 2 didn't take; retry it, then retry this.
+- `{"error": "NAME_NOT_FOUND"}` → only now ask the user for their Teams display name, and write that.
+
+## STEP 5 — Verify and finish
 Run `bash "$ROOT/setup.sh" --check` and read the JSON.
-- `"ready": true` → tell the user setup is done: they can run `/morning-triage` now, and optionally schedule it to run each weekday morning.
-- Not ready → explain the failing check and its fix: exit code `4`/`3` = dependencies (re-run STEP 1); code `2` = a login didn't take (re-run STEP 3 for whichever profile is missing — `o365_profile` or `zoom_profile`).
-- Surface any `warnings` (e.g. `.env` still holds placeholder values) and offer to fix them.
+- `"ready": true` → tell the user setup is complete: they can run `/morning-triage` now, and optionally schedule it each weekday morning.
+- Not ready → explain the failing check and its fix: exit code `4`/`3` = dependencies (re-run STEP 1); code `2` = a login didn't take (re-run STEP 2 or STEP 3 for whichever of `o365_profile` / `zoom_profile` is missing).
+- Surface any `warnings` and offer to fix them.
