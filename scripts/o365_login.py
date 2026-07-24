@@ -77,6 +77,41 @@ def on_idp(ctx):
     return False
 
 
+def warm_teams(ctx):
+    """Do the FIRST-EVER Teams visit here, while the user is present.
+
+    Signing into Outlook does not initialize Teams: the first visit to teams.cloud.microsoft
+    performs a token exchange (the Skype/ASM tokens) and a deployment-ring assignment, and the
+    app bar simply does not exist until that finishes — measured at ~40s on a fast connection
+    and longer on a slow one. Left to the daily headless run, that shows up as "signed in, but
+    the Chat tab wouldn't open, chats_seen: 0" on every early run. Doing it once here means the
+    unattended pulls start warm.
+    """
+    t = None
+    try:
+        t = ctx.new_page()
+        t.goto("https://teams.cloud.microsoft/v2/", wait_until="domcontentloaded", timeout=60000)
+        deadline = time.time() + float(os.environ.get("MT_TEAMS_WARM_S", "240"))
+        while time.time() < deadline:
+            for sel in ("button[aria-label*='Chat']", "button[aria-label*='Activity']",
+                        "[role='tree'] [role='treeitem']"):
+                try:
+                    if t.locator(sel).first.is_visible(timeout=1500):
+                        return True
+                except Exception:
+                    pass
+            t.wait_for_timeout(2000)
+        return False
+    except Exception:
+        return False
+    finally:
+        try:
+            if t:
+                t.close()
+        except Exception:
+            pass
+
+
 def tab_state(ctx):
     state = []
     for pg in list(ctx.pages):
@@ -116,6 +151,13 @@ with sync_playwright() as p:
                   f"tabs={[(t['url'][:55], t['title'][:34]) for t in tab_state(ctx)]}", flush=True)
 
     if ok:
+        # Teams is not usable just because Outlook is: warm it up once, here, with the user
+        # present — otherwise the first unattended triage runs find no Chat tab at all.
+        print("SIGNED_IN — initializing Teams (first visit does a token exchange; up to a "
+              "couple of minutes)...", flush=True)
+        warmed = warm_teams(ctx)
+        print(f"TEAMS_WARM={'OK' if warmed else 'TIMEOUT — the first triage run may need a retry'}",
+              flush=True)
         print("LOGIN_OK", flush=True)
     else:
         print("LAST_STATE: " + json.dumps(tab_state(ctx), ensure_ascii=False), flush=True)

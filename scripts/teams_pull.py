@@ -24,11 +24,93 @@ TEAMS = "https://teams.cloud.microsoft/v2/"
 # FIRST run on a freshly signed-in profile downloads the entire app bundle. Sleeping a fixed
 # amount silently produced "signed in, but the Chat tab wouldn't open / no chats triaged" on
 # newly provisioned machines — so wait for a real anchor element with a generous budget.
-APP_LOAD_TIMEOUT_S = float(os.environ.get("MT_TEAMS_LOAD_TIMEOUT_S", "90"))
+APP_LOAD_TIMEOUT_S = float(os.environ.get("MT_TEAMS_LOAD_TIMEOUT_S", "180"))
 APP_READY_SELECTORS = ("button[aria-label*='Chat']", "[data-tid='app-bar-chat']",
                        "button[aria-label*='Activity']", "[data-tid='app-bar-activity']")
 # How long a single click target may take to become visible (cold UI needs more than a beat).
 CLICK_VISIBLE_MS = float(os.environ.get("MT_TEAMS_CLICK_TIMEOUT_MS", "5000"))
+
+
+# The app bar's aria-labels are LOCALIZED: what reads "Chat (⌃ ⇧ 2)" on an English UI is
+# "聊天 …" on a Chinese one. Matching on the English word silently broke the scraper for
+# non-English tenants — chats_seen stayed 0 on every run, indistinguishable from an empty
+# account. Localized labels are kept only as a last resort; prefer the locale-independent
+# routes: the #/chat hash route and the keyboard shortcut.
+CHAT_SELECTORS = ["button[aria-label*='Chat']", "button[aria-label*='聊天']",
+                  "button[aria-label*='チャット']", "button[aria-label*='채팅']",
+                  "button[aria-label*='Chatt']", "[data-tid='app-bar-chat']", "text=Chat"]
+ACTIVITY_SELECTORS = ["button[aria-label*='Activity']", "button[aria-label*='动态']",
+                      "button[aria-label*='活動']", "button[aria-label*='アクティビティ']",
+                      "[data-tid='app-bar-activity']", "text=Activity"]
+
+
+def _rail_count(page):
+    try:
+        return page.locator("[role='tree'] [role='treeitem']").count()
+    except Exception:
+        return 0
+
+
+def open_chat(page, click_first):
+    """Open the Chat tab, without depending on the UI language."""
+    if _rail_count(page) > 0:
+        return True
+    try:  # 1) hash route — works regardless of locale
+        page.goto(TEAMS + "#/chat", wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_timeout(6000)
+        if _rail_count(page) > 0:
+            return True
+    except Exception:
+        pass
+    try:  # 2) keyboard shortcut for Chat — also locale-independent
+        page.keyboard.press("Control+Shift+2")
+        page.wait_for_timeout(5000)
+        if _rail_count(page) > 0:
+            return True
+    except Exception:
+        pass
+    # 3) localized app-bar labels
+    return click_first(CHAT_SELECTORS, settle=7000) or _rail_count(page) > 0
+
+
+def diagnose_rail(page, out):
+    """Capture WHY the chat rail was unreachable.
+
+    Counters alone cannot tell "this account has no chats" apart from "a first-run overlay is
+    covering the app bar so the Chat button was never clickable" — and the second is exactly
+    what new users hit. So grab a screenshot plus the app-bar / overlay state; the screenshot
+    path is reported in the JSON so it can be shared for remote diagnosis.
+    """
+    dbg = {}
+    try:
+        shot = os.path.join(STATE, "teams_debug.png")
+        page.screenshot(path=shot)
+        dbg["screenshot"] = shot
+    except Exception as e:
+        dbg["screenshot_error"] = str(e)[:100]
+    try:
+        dbg["title"], dbg["url"] = page.title(), page.url
+    except Exception:
+        pass
+    try:  # a modal/teaching bubble sitting on top of the app bar
+        dbg["overlays"] = page.eval_on_selector_all(
+            "[role='dialog'],[role='alertdialog'],[aria-modal='true'],.ms-Dialog,[data-tid*='dialog'],"
+            "[class*='teaching'],[class*='coachmark'],[class*='onboarding']",
+            "els=>els.map(e=>(e.getAttribute('aria-label')||e.innerText||'')"
+            ".replace(/\\s+/g,' ').trim().slice(0,90)).filter(Boolean).slice(0,6)")
+    except Exception:
+        pass
+    bar = {}
+    for sel in ("button[aria-label*='Chat']", "[data-tid='app-bar-chat']",
+                "button[aria-label*='Activity']", "[data-tid='app-bar-teams']"):
+        try:
+            loc = page.locator(sel)
+            n = loc.count()
+            bar[sel] = {"count": n, "visible": bool(n and loc.first.is_visible(timeout=800))}
+        except Exception as e:
+            bar[sel] = {"error": str(e)[:60]}
+    dbg["app_bar"] = bar
+    out["debug"] = dbg
 
 
 def wait_app_ready(page, budget_s):
@@ -348,7 +430,7 @@ def scrape_chats(page, click_first):
     default_since = cov["default_since"]
     since_date = datetime.fromisoformat(default_since.replace("Z", "+00:00")).astimezone().date()
 
-    if not click_first(["button[aria-label*='Chat']", "[data-tid='app-bar-chat']", "text=Chat"], settle=8000):
+    if not open_chat(page, click_first):
         cov["note"] = "could not open the Chat tab"
         return [], cov
 
@@ -400,7 +482,7 @@ def scrape_chats(page, click_first):
         if best >= _RAIL_MIN:
             break
         # implausibly small — re-open the Chat tab and try again
-        click_first(["button[aria-label*='Chat']", "[data-tid='app-bar-chat']", "text=Chat"], settle=6000)
+        open_chat(page, click_first)
     if os.environ.get("TEAMS_DEBUG") == "1":
         print(f"[dbg] rail stabilized: best_leaf_count={best}", file=sys.stderr)
 
@@ -682,7 +764,7 @@ def main():
             return False
 
         # Activity feed (mentions, invites, reactions)
-        click_first(["button[aria-label*='Activity']", "[data-tid='app-bar-activity']", "text=Activity"])
+        click_first(ACTIVITY_SELECTORS)
         acts = page.eval_on_selector_all(
             "[role='listitem'], [role='option']",
             "els => els.map(e=>(e.getAttribute('aria-label')||e.innerText||'').trim())"
@@ -707,10 +789,15 @@ def main():
             out["chat_threads"] = []
             out["chat_threads_coverage"] = {"chats_seen": 0, "chats_read": [], "chats_skipped": [],
                                              "budget_hit": False, "note": f"chat scrape raised: {str(e)[:160]}"}
+        # Nothing came back? Capture the page state — "no chats" and "an overlay is covering
+        # the app bar" are indistinguishable in the counters, and only the latter is a bug.
+        if not out["chat_threads"]:
+            diagnose_rail(page, out)
 
         # Chat list — open Chat, then apply the "Unread" filter and read rail items.
-        click_first(["button[aria-label*='Chat']", "[data-tid='app-bar-chat']", "text=Chat"], settle=7000)
-        click_first(["button[aria-label*='Unread']", "[aria-label*='Unread (']", "text=Unread"], settle=4000)
+        open_chat(page, click_first)
+        click_first(["button[aria-label*='Unread']", "[aria-label*='Unread (']",
+                     "button[aria-label*='未读']", "button[aria-label*='未讀']", "text=Unread"], settle=4000)
         chats = page.eval_on_selector_all(
             "[data-tid='chat-pane-item']",
             "els => els.map(e=>(e.innerText||'').trim()).filter(t=>t.length>15)",

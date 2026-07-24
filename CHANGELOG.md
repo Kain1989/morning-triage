@@ -4,6 +4,13 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.2.4
+
+### Fixed
+- **"Signed in, but the scraper couldn't open the Chat/Teams tabs — `chats_seen: 0`", persistently, on freshly set-up machines.** Root cause: **signing into Outlook does not initialize Teams.** The first-ever visit to `teams.cloud.microsoft` performs a token exchange (the Skype/ASM tokens) plus a deployment-ring assignment, and the app bar does not exist until that finishes — reproduced at ~40s on a fast connection, longer on a slow one. Every early unattended run was paying that first-visit cost on a budget meant for a warm profile. Setup now **warms Teams once, while the user is present** (`o365_login.py`, up to `MT_TEAMS_WARM_S`, default 240s) so the daily headless pulls start warm; the collector's own budget also went 90s → 180s (`MT_TEAMS_LOAD_TIMEOUT_S`).
+- **Opening the Chat tab no longer depends on the UI language.** The app bar's aria-labels are localized — "Chat (⌃⇧2)" becomes "聊天…" on a Chinese UI — so matching the English word was a single point of failure. It now tries the locale-independent `#/chat` route and the Chat keyboard shortcut first, falling back to localized labels. (Verified along the way that `[data-tid='app-bar-chat']`, one of the three original selectors, does not exist in current Teams at all: `count=0`.)
+- **An empty chat rail now explains itself.** The collector captures a screenshot (path reported in the JSON), any modal/onboarding overlay text, and the per-selector app-bar state — counters alone cannot distinguish "this account has no chats" from "an overlay is covering the app bar", and only the second is a bug.
+
 ## 0.2.3
 
 ### Fixed
