@@ -4,6 +4,13 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.2.2
+
+### Fixed
+- **Sign-in still appeared to hang after the user had actually signed in** — reported from two different machines: the credentials were entered in the correct window, the page did reach Outlook / the Zoom recordings page, and the script just kept waiting. Root cause: detection inferred "signed in" from the **UI**, and a first-ever login does not render the same screens an established profile does (welcome / onboarding / consent pages match none of the title or body checks).
+
+  Detection now leads with the **authentication cookie** — `ESTSAUTHPERSISTENT` / `ESTSAUTH` / `authtoken` for Microsoft, `_zm_login_acctype` / `_zm_multi_ac` / `_zm_kms` for Zoom — which does not depend on what is rendered; it only additionally requires that no tab is still sitting on a sign-in page. On top of that it checks **every tab** (SSO can finish in one the script never opened), probes the session in a throwaway tab every 15s, prints rich progress every 15s (`auth_cookie=`, `on_signin_page=`, and each tab's URL + title), and dumps every tab's state on timeout — so if it ever stalls again, the log alone says why. The prompt also states explicitly to sign in **in the window that just opened**, since the plugin uses its own browser profile.
+
 ## 0.2.1
 
 ### Fixed
