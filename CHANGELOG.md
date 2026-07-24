@@ -4,6 +4,15 @@ This project follows [Semantic Versioning](https://semver.org/). While at `0.x`,
 changes ship in a MINOR bump. Bump the version in **both** `.claude-plugin/plugin.json` and
 `.claude-plugin/marketplace.json` whenever you want users to pull an update.
 
+## 0.5.0
+
+### Added
+- **Zoom My Notes** (contributed). `zoom_web_pull.py` now collects the AI-structured meeting notes alongside recordings and summaries. The list is captured **passively** from the notes SPA's own `POST <docs-host>/api/search/file` (`fileFilters:["FILE_FILTER_MEETING_NOTES"]`) instead of being re-issued — that avoids having to reproduce the SPA's injected auth headers, and the same response reveals the account's docs host (e.g. `us01docs.zoom.us`), which differs per account and so is never hard-coded. Each note body is read from `<docs-host>/doc/<id>` with toolbar/footer chrome stripped, written to `<out>/notes/<date>_<title>.note.md`, and indexed as `notes:[{id,title,updated,file,text}]`. Honours `MT_LOOKBACK_DAYS`; skip with `--no-notes`. Triage now prefers **My Note → AI summary → transcript** per meeting, since a note already carries the decisions and action items.
+
+### Verified vs not verified
+- **Verified live**: docs-host discovery, the exact request payload, the empty-list path, `--no-notes`, and the resulting index shape.
+- **Not verified**: parsing a real note item and its rendered body — the account available for testing reports `totalCount: 0` notes. Item fields and timestamps are therefore read defensively (several candidate key names; epoch/ISO/text timestamps all accepted) and anything unparseable is kept rather than silently dropped.
+
 ## 0.4.0
 
 ### Added

@@ -1,6 +1,6 @@
 ---
 name: morning-triage
-description: Collect Teams chats, Outlook mail/calendar and Zoom transcripts (all headless, via saved browser sessions), triage what actually needs your reply using closure rules, and write a morning digest with paste-ready drafts. Never sends messages.
+description: Collect Teams chats, Outlook mail/calendar, and Zoom transcripts, AI summaries and My Notes (all headless, via saved browser sessions), triage what actually needs your reply using closure rules, and write a morning digest with paste-ready drafts. Never sends messages.
 ---
 
 Run the morning triage routine autonomously — do not pause to ask questions. The deliverable is a **morning digest**: what needs your reply (with drafts), today's meetings, action items, and carry-over from yesterday. **Never send any message** — every draft is for the user's approval only.
@@ -59,13 +59,16 @@ Both write into the `inbox` directory reported by `--paths` (graceful: an error 
 
 **Outlook** JSON: `{signed_in, mail, calendar}`. `mail` = today's inbox rows (unread flag + sender + subject + preview); focus on work-relevant unread, skip promos/newsletters. `calendar` = today's meetings with time/organizer.
 
-## STEP 2 — Zoom recordings, transcripts & AI summaries
+## STEP 2 — Zoom recordings, transcripts, AI summaries & My Notes
 
 Run `bash "$ROOT/setup.sh" --run zoom_web_pull.py --limit 5` (it writes to the `zoom_transcripts` path from `--paths` by default). It covers BOTH **My Recordings** and **Shared with me**, and pulls:
 - **Transcripts** — `<out>/<date>_<topic>.vtt` per recording (my + shared).
 - **AI Companion summaries** — `<out>/summaries/<date>_<topic>.summary.md` (overview + next steps + chapters) plus the raw `.summary.json`.
+- **My Notes** — `<out>/notes/<date>_<title>.note.md`: the AI-structured meeting notes (key outcomes, decisions made, open questions, action items). Skip with `--no-notes`.
 
-It writes `<out>/index.json` = `{recordings:[{source, topic, has_transcript, files}], summaries:[{scope, topic, overview, next_steps, chapters, file}]}`, where `source`/`scope` is `my` | `shared`. For anything NEW since the last run (compare against the prior `index.json`), extract decisions, action items (owner + ask) and open questions — prefer a meeting's `overview`/`next_steps` when a summary exists, else read its transcript. If it prints `NOT_SIGNED_IN`, skip Zoom this run and note the Zoom session needs re-login (`zoom_web_login.py`).
+It writes `<out>/index.json` = `{recordings:[{source, topic, has_transcript, files}], summaries:[{scope, topic, overview, next_steps, chapters, file}], notes:[{id, title, updated, file, text}]}`, where `source`/`scope` is `my` | `shared`.
+
+For anything NEW since the last run (compare against the prior `index.json`), extract decisions, action items (owner + ask) and open questions. **Use the richest source per meeting, in this order: My Note → AI summary → transcript** — a note or summary already carries the decisions and action items, so only fall back to the raw transcript when neither exists. If it prints `NOT_SIGNED_IN`, skip Zoom this run and note the Zoom session needs re-login (`zoom_web_login.py`).
 
 ## STEP 3 — Triage (closure rules — this is the whole point)
 
@@ -88,7 +91,7 @@ If `MT_WORKSPACE_DIR` is set and a message asks something answerable from that c
 Write the digest in `MT_DIGEST_LANG` to `<log>/<YYYY-MM-DD>.md` (the `log` path from `--paths`; append a `# Morning triage — <date>` section if the file exists), containing:
 - a **needs-reply table** with paste-ready reply drafts,
 - today's calendar with any prep notes,
-- meeting takeaways from new Zoom transcripts,
+- meeting takeaways from new Zoom material (My Notes / AI summaries / transcripts), carrying their action items into the needs-reply or task lists when they are yours,
 - **carry-over** open items still awaiting the user (read yesterday's digest in `$MT_LOG_DIR`).
 
 Then:

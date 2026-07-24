@@ -13,12 +13,19 @@ Summaries (AI Companion), via the authenticated REST API (inherits the browser c
   Detail:      /rest/meeting/web_view_summary?meetingId=<id>&summaryId=<sortKey>
                -> result.overallSummary / finalSummaryString, stepList / nextStepItems, summaryItemVOs
 
-Usage: zoom_web_pull.py [--limit 10] [--out DIR] [--headed] [--no-recordings] [--no-summaries]
+My Notes (AI-structured meeting notes), captured passively from the notes SPA:
+  List:   POST <docs-host>/api/search/file  {"fileFilters":["FILE_FILTER_MEETING_NOTES"], ...}
+          — the response also reveals the account's docs host, which differs per account.
+  Body:   <docs-host>/doc/<id>, read as rendered text with the toolbar/footer chrome stripped.
+
+Usage: zoom_web_pull.py [--limit 10] [--out DIR] [--headed]
+                        [--no-recordings] [--no-summaries] [--no-notes]
 Writes:
   <out>/<date>_<topic>.vtt                      transcripts (my + shared)
   <out>/summaries/<date>_<topic>.summary.md     readable summary (overview + next steps + chapters)
   <out>/summaries/<date>_<topic>.summary.json   raw summary result
-  <out>/index.json                              {recordings:[...], summaries:[...]}
+  <out>/notes/<date>_<title>.note.md            My Notes body
+  <out>/index.json                              {recordings:[...], summaries:[...], notes:[...]}
 Prints the index to stdout. NEVER uses wait_until='networkidle' on zoom.us pages."""
 import argparse
 import json
@@ -57,6 +64,57 @@ def _within_days(when, days):
     except Exception:
         return True
     return (datetime.now() - dt).total_seconds() <= days * 86400
+
+
+def _within_days_any(when, days):
+    """Same window check as _within_days, but tolerant of whatever shape a timestamp arrives in
+    (epoch seconds/millis, ISO-8601, or 'Mon D, YYYY H:MM AM'). Unknown formats are KEPT."""
+    if not when or days <= 0:
+        return True
+    try:  # epoch seconds or millis
+        n = float(when)
+        if n > 1e12:
+            n /= 1000.0
+        return (datetime.now().timestamp() - n) <= days * 86400
+    except (TypeError, ValueError):
+        pass
+    s = " ".join(str(when).split())
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
+        return (now - dt).total_seconds() <= days * 86400
+    except Exception:
+        pass
+    return _within_days(s, days)
+
+
+def _first(d, *keys):
+    """First non-empty value among candidate key names (the API's field names are not
+    contractual, so probe the plausible ones rather than pinning one)."""
+    for k in keys:
+        v = d.get(k)
+        if v not in (None, "", [], {}):
+            return v
+    return None
+
+
+# Chrome/toolbar text that shows up in a rendered doc page but is not part of the note.
+_NOTE_NOISE = ("skip to main content", "accessibility overview", "contact sales", "request a demo",
+               "regenerate", "accept all", "reject all", "copy link", "share", "export",
+               "plans & pricing", "download", "1.888.799.8854")
+
+
+def _clean_note_text(txt):
+    out_lines = []
+    for line in (txt or "").splitlines():
+        s = line.strip()
+        if len(s) < 2:
+            continue
+        low = s.lower()
+        if any(n in low for n in _NOTE_NOISE):
+            continue
+        out_lines.append(s)
+    return "\n".join(out_lines).strip()
 
 
 def signed_out(url):
@@ -251,6 +309,88 @@ def collect_summaries(ctx, scopes, limit, out, days):
     return results
 
 
+def collect_notes(ctx, days, out, limit):
+    """Collect Zoom "My Notes" — the AI-structured meeting notes.
+
+    The notes SPA fetches its own list as `POST <docs-host>/api/search/file` with
+    `{"fileFilters":["FILE_FILTER_MEETING_NOTES"], ...}`. We capture that response
+    **passively** rather than re-issuing the call: the request carries SPA-injected auth
+    headers we would otherwise have to reproduce, and the same response reveals the account's
+    docs host (e.g. `us01docs.zoom.us`), which differs per account — so nothing is hard-coded.
+
+    Verified against a live account whose notes list is empty (`totalCount: 0`), so the host
+    discovery and the empty path are proven. The per-item parsing reads defensively — several
+    candidate field names, tolerant timestamps — because the item shape could not be observed.
+    """
+    results = []
+    grabbed = {"items": [], "docs": None}
+
+    def hook(r):
+        try:
+            if "/api/search/file" not in r.url:
+                return
+            grabbed["docs"] = "https://" + r.url.split("/")[2]
+            items = (r.json() or {}).get("items") or []
+            if items:
+                grabbed["items"].extend(items)
+        except Exception:
+            pass
+
+    page = ctx.new_page()
+    page.on("response", hook)
+    failed = None
+    try:
+        page.goto(f"{BASE}/notes#/my_notes", wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(14000)
+    except Exception as e:
+        failed = f"notes list failed: {str(e)[:150]}"
+    finally:
+        try:
+            page.close()
+        except Exception:
+            pass
+    if failed:
+        return [{"error": failed}]
+
+    docs = grabbed["docs"]
+    ndir = os.path.join(out, "notes")
+    os.makedirs(ndir, exist_ok=True)
+
+    for it in grabbed["items"][:limit]:
+        nid = _first(it, "fileId", "id", "docId", "documentId", "fileGuid")
+        title = str(_first(it, "fileName", "title", "name", "topic") or "note")
+        when = _first(it, "modifiedTime", "updateTime", "modifyTime", "updatedAt", "createTime") or ""
+        if not _within_days_any(when, days):
+            continue  # newest-first
+        entry = {"id": nid, "title": title[:120], "updated": when}
+        if nid and docs:
+            d = None
+            try:
+                d = ctx.new_page()
+                d.goto(f"{docs}/doc/{nid}", wait_until="domcontentloaded", timeout=45000)
+                d.wait_for_timeout(8000)
+                entry["text"] = _clean_note_text(d.inner_text("body"))
+            except Exception as e:
+                entry["error"] = f"note body failed: {str(e)[:130]}"
+            finally:
+                try:
+                    if d:
+                        d.close()
+                except Exception:
+                    pass
+        if entry.get("text"):
+            base = f"{slug(str(when)[:10]) or 'undated'}_{slug(title)}"
+            fn = os.path.join(ndir, f"{base}.note.md")
+            try:
+                with open(fn, "w") as f:
+                    f.write(f"# {title}\n\n- Updated: {when}\n\n{entry['text']}\n")
+                entry["file"] = fn
+            except Exception as e:
+                entry["write_error"] = str(e)[:120]
+        results.append(entry)
+    return results
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=10)
@@ -260,10 +400,11 @@ def main():
     ap.add_argument("--headed", action="store_true")
     ap.add_argument("--no-recordings", action="store_true")
     ap.add_argument("--no-summaries", action="store_true")
+    ap.add_argument("--no-notes", action="store_true", help="skip Zoom My Notes")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
-    index = {"recordings": [], "summaries": []}
+    index = {"recordings": [], "summaries": [], "notes": []}
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(PROFILE, headless=not args.headed)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
@@ -284,6 +425,8 @@ def main():
                 [("my", "/rest/meeting/host_summary_list?page="),
                  ("shared", "/rest/meeting/summary/user/share_with_me?search=&page=")],
                 args.limit, args.out, args.days)
+        if not args.no_notes:
+            index["notes"] = collect_notes(ctx, args.days, args.out, args.limit)
         ctx.close()
 
     with open(os.path.join(args.out, "index.json"), "w") as f:
