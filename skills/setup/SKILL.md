@@ -3,7 +3,21 @@ name: setup
 description: One-time guided install for morning-triage — installs dependencies, opens a browser to sign in to Microsoft 365 and Zoom, auto-detects your name, and self-checks. Two sign-ins and nothing to type; use this when someone wants to set up / configure / install morning-triage for the first time.
 ---
 
-Walk the user through one-time setup. It requires **no questions** — just two browser sign-ins; everything else you do yourself. Keep each message short and say what's happening. `ROOT` below = `$CLAUDE_PLUGIN_ROOT`.
+Walk the user through one-time setup. It requires **no questions** — just two browser sign-ins; everything else you do yourself. Keep each message short and say what's happening.
+
+## STEP 0 — Resolve the plugin path first (this is the #1 way setup fails)
+
+Every command below needs the plugin's **absolute** path, written `ROOT` here. Claude Code exposes it as `${CLAUDE_PLUGIN_ROOT}`, **but that variable is not set inside the Bash tool's shell, and every Bash call is a fresh shell** — so a bare `bash "$CLAUDE_PLUGIN_ROOT/setup.sh"` expands to `/setup.sh` and dies with `exit code 127`.
+
+You already know the path: this file is at `<ROOT>/skills/setup/SKILL.md`. In **every** Bash call, either inline the absolute path or re-export it *in that same call*:
+
+```bash
+bash "/abs/path/to/morning-triage/setup.sh" --check
+# or
+export CLAUDE_PLUGIN_ROOT="/abs/path/to/morning-triage" && bash "$CLAUDE_PLUGIN_ROOT/setup.sh" --check
+```
+
+Confirm once with `ls "<ROOT>/setup.sh"` before STEP 1, and don't proceed until it resolves.
 
 ## STEP 1 — Install dependencies
 Run `bash "$ROOT/setup.sh"`. It creates the Playwright venv, installs Chromium, and scaffolds `.env`. If it fails (e.g. no `python3`), give the user the exact fix and stop here.

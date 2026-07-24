@@ -7,6 +7,8 @@
 #   ./setup.sh --login    open the browsers for the one-time O365 + Zoom sign-in
 #   ./setup.sh --whoami   print the signed-in M365 display name + name tokens (JSON)
 #   ./setup.sh --check    run the preflight selftest
+#   ./setup.sh --paths    print resolved state/inbox/transcripts/log paths (JSON)
+#   ./setup.sh --run <script.py> [args]   run a collector with the venv + .env already loaded
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,6 +66,21 @@ case "${1:-}" in
   --login-zoom) login_one zoom_web_login.py ;;
   --whoami) exec "$PY" "$HERE/scripts/whoami.py" ;;
   --check) exec "$PY" "$HERE/scripts/selftest.py" ;;
+  # Run any collector with the right venv + .env already loaded, so callers (the skills)
+  # never need MT_STATE_DIR or the venv path themselves:
+  #   ./setup.sh --run pull_inbox.py
+  #   ./setup.sh --run zoom_web_pull.py --limit 5
+  --run)
+    shift
+    [ -n "${1:-}" ] || { echo "usage: ./setup.sh --run <script.py> [args...]"; exit 2; }
+    [ -x "$PY" ] || { echo "No venv yet — run ./setup.sh first."; exit 1; }
+    script="$1"; shift
+    exec "$PY" "$HERE/scripts/$script" "$@" ;;
+  # Print the resolved paths as JSON so a caller knows where data and digests land.
+  --paths)
+    printf '{"state":"%s","inbox":"%s","zoom_transcripts":"%s","log":"%s","plugin":"%s"}\n' \
+      "$STATE" "$STATE/inbox" "$STATE/zoom_transcripts" \
+      "${MT_LOG_DIR:-$HOME/morning-triage-logs}" "$HERE" ;;
   "")
     install_deps
     ensure_env
@@ -73,5 +90,5 @@ case "${1:-}" in
     echo "  2) ./setup.sh --login   # one-time browser sign-in (a window opens)"
     echo "  3) ./setup.sh --check   # verify everything is ready"
     ;;
-  *) echo "Usage: ./setup.sh [--login|--login-o365|--login-zoom|--whoami|--check]"; exit 2 ;;
+  *) echo "Usage: ./setup.sh [--login|--login-o365|--login-zoom|--whoami|--check|--paths|--run <script.py> [args]]"; exit 2 ;;
 esac
